@@ -58,6 +58,7 @@
 #include "revng/Support/IRHelpers.h"
 #include "revng/Support/MetaAddress.h"
 
+#include "ABIAnalyses/ABIAnalysis.h"
 #include "Cache.h"
 #include "InterproceduralAnalysis.h"
 #include "Intraprocedural.h"
@@ -1233,6 +1234,7 @@ llvm::Function *CFEPAnalyzer<FO>::createFakeFunction(llvm::BasicBlock *Entry) {
 template<class FO>
 FunctionSummary CFEPAnalyzer<FO>::analyze(BasicBlock *Entry) {
   using namespace llvm;
+  using namespace ABIAnalyses;
 
   IRBuilder<> Builder(M.getContext());
 
@@ -1241,6 +1243,13 @@ FunctionSummary CFEPAnalyzer<FO>::analyze(BasicBlock *Entry) {
 
   // Initialize CFG of the function for the model
   auto CFG = collectDirectCFG(&OutlinedFunction);
+
+  // Retrieve results of the ABI analyses
+  ABIAnalysesResults
+    ABIResults = ABIAnalyses::analyzeOutlinedFunction(OutFunc,
+                                                      *GCBI,
+                                                      PreHookMarker,
+                                                      PostHookMarker);
 
   // The StackAnalysis aims at identifying the callee-saved registers of a
   // function and establishing if a function returns properly (is regular),
