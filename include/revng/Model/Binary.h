@@ -693,6 +693,8 @@ public:
   bool verifyTypes() const debug_function;
   bool verifyTypes(bool Assert) const debug_function;
   bool verifyTypes(VerifyHelper &VH) const;
+  std::string Name;
+  SortedVector<std::string> ImportedLibraries;
 
 public:
   bool verify() const debug_function;
@@ -706,11 +708,13 @@ public:
 };
 INTROSPECTION_NS(model,
                  Binary,
+                 Name,
                  Functions,
                  ImportedDynamicFunctions,
                  Types,
                  Architecture,
-                 Segments)
+                 Segments,
+                 ImportedLibraries)
 
 template<>
 struct llvm::yaml::MappingTraits<model::Binary>
