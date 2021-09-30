@@ -4,6 +4,8 @@
 // This file is distributed under the MIT License. See LICENSE.md for details.
 //
 
+#include "llvm/Object/Binary.h"
+
 #include "revng/Model/Binary.h"
 
 class DwarfImporter {
@@ -32,4 +34,5 @@ public:
 
 public:
   void import(llvm::StringRef FileName);
+  void import(const llvm::object::Binary &TheBinary, llvm::StringRef FileName);
 };

@@ -1374,12 +1374,13 @@ void CodeGenerator::translate(Optional<uint64_t> RawVirtualAddress) {
   }
 
   // Import Dwarf
+  DwarfImporter Importer(Model);
   if (ImportDebugInfo.size() > 0) {
-    DwarfImporter Importer(Model);
     for (const std::string &Path : ImportDebugInfo) {
       Importer.import(Path);
     }
   }
+  Importer.import(Binary.binary(), "");
 
   writeModel(*Model.get(), *TheModule);
 

@@ -267,34 +267,38 @@ bool Function::verify(VerifyHelper &VH) const {
   if (Type == FunctionType::Fake)
     return VH.maybeFail(CFG.size() == 0);
 
-  // Verify blocks
-  bool HasEntry = false;
-  for (const BasicBlock &Block : CFG) {
+  if (CFG.size() != 0) {
+    // No CFG is fine
 
-    if (Block.Start == Entry) {
-      if (HasEntry)
-        return VH.fail();
-      HasEntry = true;
+    // Verify blocks
+    bool HasEntry = false;
+    for (const BasicBlock &Block : CFG) {
+
+      if (Block.Start == Entry) {
+        if (HasEntry)
+          return VH.fail();
+        HasEntry = true;
+      }
+
+      for (const auto &Edge : Block.Successors)
+        if (not Edge->verify(VH))
+          return VH.fail();
     }
 
-    for (const auto &Edge : Block.Successors)
-      if (not Edge->verify(VH))
-        return VH.fail();
+    if (not HasEntry)
+      return VH.fail();
+
+    // Populate graph
+    FunctionCFG Graph = getGraph(*this);
+
+    // Ensure all the nodes are reachable from the entry node
+    if (not Graph.allNodesAreReachable())
+      return VH.fail();
+
+    // Ensure the only node with no successors is invalid
+    if (not Graph.hasOnlyInvalidExits())
+      return VH.fail();
   }
-
-  if (not HasEntry)
-    return VH.fail();
-
-  // Populate graph
-  FunctionCFG Graph = getGraph(*this);
-
-  // Ensure all the nodes are reachable from the entry node
-  if (not Graph.allNodesAreReachable())
-    return VH.fail();
-
-  // Ensure the only node with no successors is invalid
-  if (not Graph.hasOnlyInvalidExits())
-    return VH.fail();
 
   // Prototype is present
   if (not Prototype.isValid())

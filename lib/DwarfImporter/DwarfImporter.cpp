@@ -9,6 +9,7 @@
 
 #include "llvm/ADT/DepthFirstIterator.h"
 #include "llvm/ADT/Optional.h"
+#include "llvm/ADT/Triple.h"
 #include "llvm/BinaryFormat/Dwarf.h"
 #include "llvm/DebugInfo/DWARF/DWARFContext.h"
 #include "llvm/DebugInfo/DWARF/DWARFDie.h"
@@ -18,8 +19,9 @@
 #include "llvm/Support/raw_os_ostream.h"
 #include "llvm/Support/raw_ostream.h"
 
-#include "revng/ADT/GenericGraph.h"
 #include "revng/DwarfImporter/DwarfImporter.h"
+#include "revng/Model/ABI.h"
+#include "revng/Model/Processing.h"
 #include "revng/Model/Type.h"
 #include "revng/Support/Assert.h"
 #include "revng/Support/Debug.h"
@@ -83,7 +85,8 @@ getUnsignedOrSigned(const DWARFFormValue &Value) {
 }
 
 static std::optional<uint64_t>
-getUnsignedOrSigned(const llvm::Optional<DWARFFormValue> &Value) {
+getUnsignedOrSigned(const DWARFDie &Die, dwarf::Attribute Attribute) {
+  auto Value = Die.find(Attribute);
   if (not Value)
     return {};
   else
@@ -123,6 +126,7 @@ private:
   size_t Index;
   size_t AltIndex;
   DWARFContext &DICtx;
+  model::abi::Values DefaultABI;
   std::map<size_t, const model::Type *> Placeholders;
   std::set<const DWARFDie *> InProgressDies;
 
@@ -135,9 +139,27 @@ public:
     Model(Importer.getModel()),
     Index(Index),
     AltIndex(AltIndex),
-    DICtx(DICtx) {}
+    DICtx(DICtx) {
+
+    // Detect default ABI from architecture
+    // TODO: this needs to be refined
+    switch (DICtx.getArch()) {
+    case llvm::Triple::x86_64:
+      DefaultABI = model::abi::SystemV_x86_64;
+      break;
+    default:
+      DefaultABI = model::abi::Invalid;
+    }
+  }
 
 private:
+  model::abi::Values getABI(CallingConvention CC = DW_CC_normal) const {
+    if (CC != DW_CC_normal)
+      return model::abi::Invalid;
+
+    return DefaultABI;
+  }
+
   const model::QualifiedType &record(const DWARFDie &Die,
                                      const model::TypePath &Path,
                                      bool IsNotPlaceholder) {
@@ -354,6 +376,8 @@ private:
 
   RecursiveCoroutine<const model::QualifiedType *>
   resolveType(const DWARFDie &Die, bool ResolveIfHasIdentity) {
+    using model::QualifiedType;
+
     // Ensure there are no loops in the dies we're exploring
     using ScopedSetElement = ScopedSetElement<decltype(InProgressDies)>;
     ScopedSetElement InProgressDie(InProgressDies, &Die);
@@ -396,9 +420,9 @@ private:
             model::Qualifier NewQualifier;
             NewQualifier.Kind = model::QualifierKind::Array;
 
-            auto MaybeUpperBound = getUnsignedOrSigned(
-              ChildDie.find(DW_AT_upper_bound));
-            auto MaybeCount = getUnsignedOrSigned(ChildDie.find(DW_AT_count));
+            auto MaybeUpperBound = getUnsignedOrSigned(ChildDie,
+                                                       DW_AT_upper_bound);
+            auto MaybeCount = getUnsignedOrSigned(ChildDie, DW_AT_count);
 
             if (MaybeUpperBound and MaybeCount
                 and *MaybeUpperBound != *MaybeCount + 1) {
@@ -465,8 +489,7 @@ private:
         case llvm::dwarf::DW_TAG_subroutine_type: {
           auto *FunctionType = cast<model::CABIFunctionType>(T);
           FunctionType->CustomName = Name;
-          // WIP
-          FunctionType->ABI = model::abi::SystemV_x86_64;
+          FunctionType->ABI = getABI();
           FunctionType->ReturnType = rc_recur getTypeOrVoid(Die);
 
           uint64_t Index = 0;
@@ -476,8 +499,7 @@ private:
               if (Die.getOffset() == 0x0001045b)
                 raise(5);
 
-              const model::QualifiedType *ArgumentType = rc_recur getType(
-                ChildDie);
+              const QualifiedType *ArgumentType = rc_recur getType(ChildDie);
 
               if (ArgumentType == nullptr) {
                 reportIgnoredDie(Die,
@@ -536,8 +558,7 @@ private:
                 continue;
               }
 
-              const model::QualifiedType *MemberType = rc_recur getType(
-                ChildDie);
+              const QualifiedType *MemberType = rc_recur getType(ChildDie);
 
               if (MemberType == nullptr) {
                 reportIgnoredDie(Die,
@@ -569,8 +590,7 @@ private:
           uint64_t Index = 0;
           for (const DWARFDie &ChildDie : Die.children()) {
             if (ChildDie.getTag() == DW_TAG_member) {
-              const model::QualifiedType *MemberType = rc_recur getType(
-                ChildDie);
+              const QualifiedType *MemberType = rc_recur getType(ChildDie);
               if (MemberType == nullptr) {
                 reportIgnoredDie(Die,
                                  "The type of member " + Twine(Index + 1)
@@ -599,23 +619,24 @@ private:
           auto *Enum = cast<model::EnumType>(T);
           Enum->CustomName = Name;
 
-          const model::QualifiedType *UnderlyingType = rc_recur getType(Die);
-          if (UnderlyingType == nullptr) {
+          const QualifiedType *QualifiedUnderlyingType = rc_recur getType(Die);
+          if (QualifiedUnderlyingType == nullptr) {
             reportIgnoredDie(Die,
                              "The enum underlying type cannot be resolved");
             return nullptr;
           }
 
-          revng_assert(UnderlyingType->Qualifiers.empty());
-          Enum->UnderlyingType = Model->getTypePath(
-            UnderlyingType->UnqualifiedType.get());
+          revng_assert(QualifiedUnderlyingType->Qualifiers.empty());
+          const model::Type *UnderlyingType = nullptr;
+          UnderlyingType = QualifiedUnderlyingType->UnqualifiedType.get();
+          Enum->UnderlyingType = Model->getTypePath(UnderlyingType);
 
           uint64_t Index = 0;
           for (const DWARFDie &ChildDie : Die.children()) {
             if (ChildDie.getTag() == DW_TAG_enumerator) {
               // Collect value
-              auto MaybeValue = getUnsignedOrSigned(
-                ChildDie.find(DW_AT_const_value));
+              auto MaybeValue = getUnsignedOrSigned(ChildDie,
+                                                    DW_AT_const_value);
               if (not MaybeValue) {
                 reportIgnoredDie(ChildDie,
                                  "Ignoring enum entry " + Twine(Index + 1)
@@ -668,7 +689,7 @@ private:
     return TypePath;
   }
 
-  void secondPass() {
+  void resolveAllTypes() {
     for (const auto &CU : DICtx.compile_units()) {
       for (const auto &Entry : CU->dies()) {
         DWARFDie Die = { CU.get(), &Entry };
@@ -680,14 +701,21 @@ private:
   }
 
   std::optional<model::TypePath> getSubprogramPrototype(const DWARFDie &Die) {
+    using namespace model;
+
     // Create function type
-    auto Path = Model->recordNewType(
-      model::makeType<model::CABIFunctionType>());
+    auto Path = Model->recordNewType(makeType<CABIFunctionType>());
     auto *FunctionType = cast<model::CABIFunctionType>(Path.get());
     FunctionType->CustomName = getName(Die);
-    FunctionType->ABI = model::abi::SystemV_x86_64;
-    FunctionType->ReturnType = getTypeOrVoid(Die);
 
+    // Detect ABI
+    CallingConvention CC = DW_CC_normal;
+    auto MaybeCC = getUnsignedOrSigned(Die, DW_AT_calling_convention);
+    if (MaybeCC)
+      CC = static_cast<CallingConvention>(*MaybeCC);
+    FunctionType->ABI = getABI(CC);
+
+    // Arguments
     uint64_t Index = 0;
     for (const DWARFDie &ChildDie : Die.children()) {
       if (ChildDie.getTag() == DW_TAG_formal_parameter) {
@@ -706,10 +734,13 @@ private:
       }
     }
 
+    // Return type
+    FunctionType->ReturnType = getTypeOrVoid(Die);
+
     return Path;
   }
 
-  void thirdPass() {
+  void createDynamicFunctions() {
     for (const auto &CU : DICtx.compile_units()) {
       for (const auto &Entry : CU->dies()) {
         DWARFDie Die = { CU.get(), &Entry };
@@ -737,151 +768,28 @@ private:
     }
   }
 
-  void fix() {
-    // TODO: collapse uint8_t typedefs into the primitive type
+  void dropTypesDependingOnUnresolvedTypes() {
+    std::set<const model::Type *> ToDrop;
+    for (const auto [_, Type] : Placeholders)
+      ToDrop.insert(Type);
 
-    std::set<std::string> UsedNames;
-
-    for (auto &Type : Model->Types) {
-      model::Type *T = Type.get();
-      if (isa<model::PrimitiveType>(T)) {
-        UsedNames.insert(T->name().str().str());
-      }
-    }
-
-    for (auto &Type : Model->Types) {
-      model::Type *T = Type.get();
-      if (isa<model::PrimitiveType>(T))
-        continue;
-
-      std::string Name = T->name().str().str();
-      while (UsedNames.count(Name) != 0) {
-        Name += "_";
-      }
-
-      // Rename
-      upcast(T, [&Name](auto &Upcasted) {
-        using UpcastedType = std::remove_cvref_t<decltype(Upcasted)>;
-        if constexpr (not std::is_same_v<model::PrimitiveType, UpcastedType>) {
-          Upcasted.CustomName = Name;
-        } else {
-          revng_abort();
-        }
-      });
-
-      // Record new name
-      UsedNames.insert(Name);
-    }
-  }
-
-  void fix2() {
-    struct TypeNode {
-      const model::Type *T;
-    };
-
-    using Graph = GenericGraph<ForwardNode<TypeNode>>;
-
-    Graph ReverseDependencyGraph;
-
-    // Create nodes in reverse dependency graph
-    std::map<const model::Type *, ForwardNode<TypeNode> *> TypeToNode;
-    for (UpcastablePointer<model::Type> &T : Model->Types)
-      TypeToNode[T.get()] = ReverseDependencyGraph.addNode(TypeNode{ T.get() });
-
-    auto RegisterDependency = [&](UpcastablePointer<model::Type> &T,
-                                  const model::QualifiedType &QT) {
-      auto *DependantType = QT.UnqualifiedType.get();
-      TypeToNode.at(DependantType)->addSuccessor(TypeToNode.at(T.get()));
-    };
-
-    // Populate the graph
-    for (UpcastablePointer<model::Type> &T : Model->Types) {
-      if (auto *Primitive = dyn_cast<model::PrimitiveType>(T.get())) {
-        // Nothing to do here
-      } else if (auto *Struct = dyn_cast<model::StructType>(T.get())) {
-        for (const model::StructField &Field : Struct->Fields)
-          RegisterDependency(T, Field.Type);
-      } else if (auto *Union = dyn_cast<model::UnionType>(T.get())) {
-        for (const model::UnionField &Field : Union->Fields)
-          RegisterDependency(T, Field.Type);
-      } else if (auto *Enum = dyn_cast<model::EnumType>(T.get())) {
-        RegisterDependency(T, { Enum->UnderlyingType });
-      } else if (auto *Typedef = dyn_cast<model::TypedefType>(T.get())) {
-        RegisterDependency(T, Typedef->UnderlyingType);
-      } else if (auto *RFT = dyn_cast<model::RawFunctionType>(T.get())) {
-        for (const model::NamedTypedRegister &Argument : RFT->Arguments)
-          RegisterDependency(T, Argument.Type);
-        for (const model::TypedRegister &RV : RFT->ReturnValues)
-          RegisterDependency(T, RV.Type);
-      } else if (auto *CAFT = dyn_cast<model::CABIFunctionType>(T.get())) {
-        for (const model::Argument &Argument : CAFT->Arguments)
-          RegisterDependency(T, Argument.Type);
-        RegisterDependency(T, CAFT->ReturnType);
-      } else {
-        revng_abort();
-      }
-    }
-
-    // Prepare for deletion all the nodes reachable from unresolved placeholder
-    // nodes
-    std::set<const model::Type *> ToDelete;
-    for (auto &[Offset, Type] : Placeholders) {
-      for (const auto *Node : depth_first(TypeToNode.at(Type))) {
-        ToDelete.insert(Node->T);
-      }
-    }
-
-    // Purge dynamic functions with invalid types
-    auto Begin = Model->ImportedDynamicFunctions.begin();
-    for (auto It = Begin; It != Model->ImportedDynamicFunctions.end(); /**/) {
-      if (ToDelete.count(It->Prototype.get()) == 0) {
-        ++It;
-      } else {
-        It = Model->ImportedDynamicFunctions.erase(It);
-      }
-    }
+    unsigned DroppedTypes = dropTypesDependingOnTypes(Model, ToDrop);
 
     revng_log(DILogger,
-              "Purging " << ToDelete.size() << " types due to "
+              "Purging " << DroppedTypes << " types due to "
                          << Placeholders.size() << " unresolved types");
-
-    // Purge types depending on unresolved placeholder types
-    for (auto It = Model->Types.begin(); It != Model->Types.end();) {
-      if (ToDelete.count(It->get()) != 0)
-        It = Model->Types.erase(It);
-      else
-        ++It;
-    }
 
     Placeholders.clear();
   }
 
-  void dedup() {
-    // Create equivalence classes based on the same name and local equivalence
-
-    // Create a bidirectional graph of the non-local parts (including pointers)
-
-    // Mark nodes with only pointer predecessors as entry points
-
-    // Do a post order visit
-
-    // For the current node, consider all the weak equivalent nodes and start
-    // comparing
-
-    // Zip out edges of the node pair: are the destinations in the same
-    // equivalence class? If so, register that in the current visit they are the
-    // same and proceed.
-  }
-
 public:
   void run() {
-    // WIP: rename
     materializeTypesWithIdentity();
-    secondPass();
-    thirdPass();
-    fix();
-    fix2();
-    dedup();
+    resolveAllTypes();
+    createDynamicFunctions();
+    deduplicateNames(Model);
+    dropTypesDependingOnUnresolvedTypes();
+    deduplicateEquivalentTypes(Model);
     revng_assert(Placeholders.size() == 0);
     Model->verify(true);
   }
@@ -907,7 +815,7 @@ ArrayRef<uint8_t> getSectionsContents(StringRef Name, T &ELF) {
   return {};
 }
 
-static StringRef getAltDebugLinkFileName(object::Binary *B) {
+static StringRef getAltDebugLinkFileName(const object::Binary *B) {
   using namespace llvm::object;
 
   auto Handler = [&](auto *ELFObject) -> StringRef {
@@ -949,14 +857,36 @@ static void error(StringRef Prefix, std::error_code EC) {
 void DwarfImporter::import(StringRef FileName) {
   using namespace llvm::object;
 
+  // TODO: recursively load dependant DWARFs:
+  //
+  // 1. Load any available DWARF in the binary itself
+  // 2. Parse .note.gnu.build-id, .gnu_debugaltlink and .gnu_debuglink
+  // 3. Load from the following paths:
+  //    * /usr/lib/debug/.build-id/ab/cdef1234.debug
+  //    * /usr/bin/ls.debug
+  //    * /usr/bin/.debug/ls.debug
+  //    * /usr/lib/debug/usr/bin/ls.debug
+  //    In turn, parse .gnu_debugaltlink (and .gnu_debuglink?)
+  // 2. Parse DT_NEEDED
+  // 3. Look for each library in ld.so.conf directories
+  // 4. Go to 1
+  //
+  // Source: https://sourceware.org/gdb/onlinedocs/gdb/Separate-Debug-Files.html
+
   ErrorOr<std::unique_ptr<MemoryBuffer>>
     BuffOrErr = MemoryBuffer::getFileOrSTDIN(FileName);
   error(FileName, BuffOrErr.getError());
   std::unique_ptr<MemoryBuffer> Buffer = std::move(BuffOrErr.get());
   Expected<std::unique_ptr<Binary>> BinOrErr = object::createBinary(*Buffer);
   error(FileName, errorToErrorCode(BinOrErr.takeError()));
+  import(*BinOrErr->get(), FileName);
+}
 
-  if (auto *ELF = dyn_cast<ObjectFile>(BinOrErr->get())) {
+void DwarfImporter::import(const llvm::object::Binary &TheBinary,
+                           StringRef FileName) {
+  using namespace llvm::object;
+
+  if (auto *ELF = dyn_cast<ObjectFile>(&TheBinary)) {
     // Check if we already loaded the alt debug info file
     size_t AltIndex = -1;
     StringRef AltDebugLinkFileName = getAltDebugLinkFileName(ELF);
@@ -978,18 +908,3 @@ void DwarfImporter::import(StringRef FileName) {
 
   LoadedFiles.push_back(sys::path::filename(FileName).str());
 }
-
-// WIP:
-// TODO: when loading a binary
-// 1. Load any available DWARF in the binary itself
-// 2. Parse .note.gnu.build-id, .gnu_debugaltlink and .gnu_debuglink
-// 3. Load from the following paths:
-//    - /usr/lib/debug/.build-id/ab/cdef1234.debug
-//    - /usr/bin/ls.debug
-//    - /usr/bin/.debug/ls.debug
-//    - /usr/lib/debug/usr/bin/ls.debug
-//    In turn, parse .gnu_debugaltlink (and .gnu_debuglink?)
-// 2. Parse DT_NEEDED
-// 3. Look for each library in ld.so.conf directories
-// 4. Go to 1
-// https://sourceware.org/gdb/onlinedocs/gdb/Separate-Debug-Files.html
