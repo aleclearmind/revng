@@ -6,6 +6,7 @@
 //
 
 #include <csignal>
+#include <optional>
 
 #include "llvm/ADT/DepthFirstIterator.h"
 #include "llvm/ADT/Optional.h"
@@ -125,9 +126,11 @@ private:
   TupleTree<model::Binary> &Model;
   size_t Index;
   size_t AltIndex;
+  size_t TypesWithIdentityCount;
   DWARFContext &DICtx;
   model::abi::Values DefaultABI;
   std::map<size_t, const model::Type *> Placeholders;
+  std::set<const model::Type *> InvalidPrimitives;
   std::set<const DWARFDie *> InProgressDies;
 
 public:
@@ -248,8 +251,15 @@ private:
   }
 
   template<typename T>
-  void createPlaceholderType(const DWARFDie &Die) {
-    record(Die, Model->recordNewType(model::makeType<T>()), false);
+  [[maybe_unused]] T *createPlaceholderType(const DWARFDie &Die) {
+    auto NewType = model::makeType<T>();
+    T *Result = cast<T>(NewType.get());
+    record(Die, Model->recordNewType(std::move(NewType)), false);
+    return Result;
+  }
+
+  void createInvalidPrimitivePlaceholder(const DWARFDie &Die) {
+    InvalidPrimitives.insert(createPlaceholderType<model::TypedefType>(Die));
   }
 
   void createType(const DWARFDie &Die) {
@@ -270,12 +280,14 @@ private:
         Kind = dwarfEncodingToModel(*MaybeEncoding->getAsUnsignedConstant());
 
       if (Kind == model::PrimitiveTypeKind::Invalid) {
-        reportIgnoredDie(Die, "Unknown type");
+        reportIgnoredDie(Die, "Unknown primitive type");
+        createInvalidPrimitivePlaceholder(Die);
         return;
       }
 
-      if (Size == 0 or not isPowerOf2_32(Size)) {
+      if (Size == 0) {
         reportIgnoredDie(Die, "Invalid size for primitive type");
+        createInvalidPrimitivePlaceholder(Die);
         return;
       }
 
@@ -337,6 +349,8 @@ private:
         }
       }
     }
+
+    TypesWithIdentityCount = Placeholders.size();
   }
 
   static model::Identifier getName(const DWARFDie &Die) {
@@ -372,6 +386,214 @@ private:
     } else {
       return { Model->getPrimitiveType(model::PrimitiveTypeKind::Void, 0) };
     }
+  }
+
+  RecursiveCoroutine<const model::QualifiedType *>
+  resolveTypeWithIdentity(const DWARFDie &Die, model::QualifiedType *TypePath) {
+    using namespace model;
+
+    auto Offset = Die.getOffset();
+    auto Tag = Die.getTag();
+
+    revng_assert(Placeholders.count(Offset) != 0);
+    revng_assert(TypePath->Qualifiers.empty());
+    model::Type *T = TypePath->UnqualifiedType.get();
+
+    model::Identifier Name = getName(Die);
+
+    if (InvalidPrimitives.count(T) != 0)
+      return nullptr;
+
+    switch (Tag) {
+    case llvm::dwarf::DW_TAG_subroutine_type: {
+      auto *FunctionType = cast<model::CABIFunctionType>(T);
+      FunctionType->CustomName = Name;
+      FunctionType->ABI = getABI();
+
+      if (FunctionType->ABI == model::abi::Invalid) {
+        reportIgnoredDie(Die, "Unknown calling convention");
+        return nullptr;
+      }
+
+      FunctionType->ReturnType = rc_recur getTypeOrVoid(Die);
+      revng_assert(FunctionType->ReturnType.UnqualifiedType.isValid());
+
+      uint64_t Index = 0;
+      for (const DWARFDie &ChildDie : Die.children()) {
+        if (ChildDie.getTag() == DW_TAG_formal_parameter) {
+
+          const QualifiedType *ArgumentType = rc_recur getType(ChildDie);
+
+          if (ArgumentType == nullptr) {
+            reportIgnoredDie(Die,
+                             "The type of argument " + Twine(Index + 1)
+                               + " cannot be resolved");
+            return nullptr;
+          }
+
+          model::Argument &NewArgument = FunctionType->Arguments[Index];
+          NewArgument.Type = *ArgumentType;
+          Index += 1;
+        }
+      }
+
+    } break;
+
+    case llvm::dwarf::DW_TAG_typedef:
+    case llvm::dwarf::DW_TAG_restrict_type:
+    case llvm::dwarf::DW_TAG_volatile_type: {
+      model::QualifiedType TargetType = rc_recur getTypeOrVoid(Die);
+      auto *Typedef = cast<model::TypedefType>(T);
+      Typedef->CustomName = Name;
+      Typedef->UnderlyingType = TargetType;
+      revng_assert(Typedef->UnderlyingType.UnqualifiedType.isValid());
+
+    } break;
+
+    case llvm::dwarf::DW_TAG_structure_type: {
+      auto MaybeSize = Die.find(DW_AT_byte_size);
+
+      if (not MaybeSize) {
+        reportIgnoredDie(Die, "Struct has no size");
+        return nullptr;
+      }
+
+      auto *Struct = cast<model::StructType>(T);
+      Struct->CustomName = Name;
+      Struct->Size = *MaybeSize->getAsUnsignedConstant();
+
+      uint64_t Index = 0;
+      for (const DWARFDie &ChildDie : Die.children()) {
+        if (ChildDie.getTag() == DW_TAG_member) {
+
+          // Collect offset
+          auto MaybeOffset = ChildDie.find(DW_AT_data_member_location);
+
+          if (not MaybeOffset) {
+            reportIgnoredDie(ChildDie, "Struct field has no offset");
+            continue;
+          }
+
+          auto Offset = *MaybeOffset->getAsUnsignedConstant();
+
+          if (ChildDie.find(DW_AT_bit_size)) {
+            reportIgnoredDie(ChildDie, "Ignoring bitfield in struct");
+            continue;
+          }
+
+          const QualifiedType *MemberType = rc_recur getType(ChildDie);
+
+          if (MemberType == nullptr) {
+            reportIgnoredDie(Die,
+                             "The type of member " + Twine(Index + 1)
+                               + " cannot be resolved");
+            return nullptr;
+          }
+
+          //  Create new field
+          auto &Field = Struct->Fields[Offset];
+          Field.CustomName = getName(ChildDie);
+          Field.Type = *MemberType;
+
+          ++Index;
+        }
+      }
+
+      if (Index == 0) {
+        reportIgnoredDie(Die, "Struct has no fields");
+        return nullptr;
+      }
+
+    } break;
+
+    case llvm::dwarf::DW_TAG_union_type: {
+      auto *Union = cast<model::UnionType>(T);
+      Union->CustomName = Name;
+
+      uint64_t Index = 0;
+      for (const DWARFDie &ChildDie : Die.children()) {
+        if (ChildDie.getTag() == DW_TAG_member) {
+          const QualifiedType *MemberType = rc_recur getType(ChildDie);
+          if (MemberType == nullptr) {
+            reportIgnoredDie(Die,
+                             "The type of member " + Twine(Index + 1)
+                               + " cannot be resolved");
+            return nullptr;
+          }
+
+          // Create new field
+          auto &Field = Union->Fields[Index];
+          Field.CustomName = getName(ChildDie);
+          Field.Type = *MemberType;
+
+          // Increment union index
+          Index += 1;
+        }
+      }
+
+      if (Index == 0) {
+        reportIgnoredDie(Die, "Union has no fields");
+        return nullptr;
+      }
+
+    } break;
+
+    case llvm::dwarf::DW_TAG_enumeration_type: {
+      auto *Enum = cast<model::EnumType>(T);
+      Enum->CustomName = Name;
+
+      const QualifiedType *QualifiedUnderlyingType = rc_recur getType(Die);
+      if (QualifiedUnderlyingType == nullptr) {
+        reportIgnoredDie(Die, "The enum underlying type cannot be resolved");
+        return nullptr;
+      }
+
+      revng_assert(QualifiedUnderlyingType->Qualifiers.empty());
+      const model::Type *UnderlyingType = nullptr;
+      UnderlyingType = QualifiedUnderlyingType->UnqualifiedType.get();
+      Enum->UnderlyingType = Model->getTypePath(UnderlyingType);
+
+      uint64_t Index = 0;
+      for (const DWARFDie &ChildDie : Die.children()) {
+        if (ChildDie.getTag() == DW_TAG_enumerator) {
+          // Collect value
+          auto MaybeValue = getUnsignedOrSigned(ChildDie, DW_AT_const_value);
+          if (not MaybeValue) {
+            reportIgnoredDie(ChildDie,
+                             "Ignoring enum entry " + Twine(Index + 1)
+                               + " without a value");
+            return nullptr;
+          }
+
+          uint64_t Value = *MaybeValue;
+
+          // Create new entry
+          model::Identifier EntryName = getName(ChildDie);
+
+          // If it's the first time, set CustomName, otherwise, introduce
+          // an alias
+          auto It = Enum->Entries.find(Value);
+          if (It == Enum->Entries.end()) {
+            auto &Entry = Enum->Entries[Value];
+            Entry.CustomName = EntryName;
+          } else {
+            It->Aliases.insert(EntryName);
+          }
+
+          ++Index;
+        }
+      }
+
+    } break;
+
+    default:
+      reportIgnoredDie(Die, "Unknown type");
+      return nullptr;
+    }
+
+    Placeholders.erase(Offset);
+
+    rc_return TypePath;
   }
 
   RecursiveCoroutine<const model::QualifiedType *>
@@ -479,199 +701,9 @@ private:
       // This die is already present in the map. Either it has already been
       // fully imported, or it's a type with an identity on the model.
       // In the latter case, proceed only if explicitly told to do so.
-      if (ResolveIfHasIdentity) {
-        revng_assert(TypePath->Qualifiers.empty());
-        model::Type *T = TypePath->UnqualifiedType.get();
+      if (ResolveIfHasIdentity)
+        rc_recur resolveTypeWithIdentity(Die, TypePath);
 
-        model::Identifier Name = getName(Die);
-
-        switch (Tag) {
-        case llvm::dwarf::DW_TAG_subroutine_type: {
-          auto *FunctionType = cast<model::CABIFunctionType>(T);
-          FunctionType->CustomName = Name;
-          FunctionType->ABI = getABI();
-          FunctionType->ReturnType = rc_recur getTypeOrVoid(Die);
-
-          uint64_t Index = 0;
-          for (const DWARFDie &ChildDie : Die.children()) {
-            if (ChildDie.getTag() == DW_TAG_formal_parameter) {
-
-              if (Die.getOffset() == 0x0001045b)
-                raise(5);
-
-              const QualifiedType *ArgumentType = rc_recur getType(ChildDie);
-
-              if (ArgumentType == nullptr) {
-                reportIgnoredDie(Die,
-                                 "The type of argument " + Twine(Index + 1)
-                                   + " cannot be resolved");
-                return nullptr;
-              }
-
-              model::Argument &NewArgument = FunctionType->Arguments[Index];
-              NewArgument.Type = *ArgumentType;
-              Index += 1;
-            }
-          }
-
-        } break;
-
-        case llvm::dwarf::DW_TAG_typedef:
-        case llvm::dwarf::DW_TAG_restrict_type:
-        case llvm::dwarf::DW_TAG_volatile_type: {
-          model::QualifiedType TargetType = rc_recur getTypeOrVoid(Die);
-          auto *Typedef = cast<model::TypedefType>(T);
-          Typedef->CustomName = Name;
-          Typedef->UnderlyingType = TargetType;
-          revng_assert(Typedef->UnderlyingType.UnqualifiedType.isValid());
-
-        } break;
-
-        case llvm::dwarf::DW_TAG_structure_type: {
-          auto MaybeSize = Die.find(DW_AT_byte_size);
-
-          if (not MaybeSize) {
-            reportIgnoredDie(Die, "Struct has no size");
-            return nullptr;
-          }
-
-          auto *Struct = cast<model::StructType>(T);
-          Struct->CustomName = Name;
-          Struct->Size = *MaybeSize->getAsUnsignedConstant();
-
-          uint64_t Index = 0;
-          for (const DWARFDie &ChildDie : Die.children()) {
-            if (ChildDie.getTag() == DW_TAG_member) {
-
-              // Collect offset
-              auto MaybeOffset = ChildDie.find(DW_AT_data_member_location);
-
-              if (not MaybeOffset) {
-                reportIgnoredDie(ChildDie, "Struct field has no offset");
-                continue;
-              }
-
-              auto Offset = *MaybeOffset->getAsUnsignedConstant();
-
-              if (ChildDie.find(DW_AT_bit_size)) {
-                reportIgnoredDie(ChildDie, "Ignoring bitfield in struct");
-                continue;
-              }
-
-              const QualifiedType *MemberType = rc_recur getType(ChildDie);
-
-              if (MemberType == nullptr) {
-                reportIgnoredDie(Die,
-                                 "The type of member " + Twine(Index + 1)
-                                   + " cannot be resolved");
-                return nullptr;
-              }
-
-              //  Create new field
-              auto &Field = Struct->Fields[Offset];
-              Field.CustomName = getName(ChildDie);
-              Field.Type = *MemberType;
-
-              ++Index;
-            }
-          }
-
-          if (Index == 0) {
-            reportIgnoredDie(Die, "Struct has no fields");
-            return nullptr;
-          }
-
-        } break;
-
-        case llvm::dwarf::DW_TAG_union_type: {
-          auto *Union = cast<model::UnionType>(T);
-          Union->CustomName = Name;
-
-          uint64_t Index = 0;
-          for (const DWARFDie &ChildDie : Die.children()) {
-            if (ChildDie.getTag() == DW_TAG_member) {
-              const QualifiedType *MemberType = rc_recur getType(ChildDie);
-              if (MemberType == nullptr) {
-                reportIgnoredDie(Die,
-                                 "The type of member " + Twine(Index + 1)
-                                   + " cannot be resolved");
-                return nullptr;
-              }
-
-              // Create new field
-              auto &Field = Union->Fields[Index];
-              Field.CustomName = getName(ChildDie);
-              Field.Type = *MemberType;
-
-              // Increment union index
-              Index += 1;
-            }
-          }
-
-          if (Index == 0) {
-            reportIgnoredDie(Die, "Union has no fields");
-            return nullptr;
-          }
-
-        } break;
-
-        case llvm::dwarf::DW_TAG_enumeration_type: {
-          auto *Enum = cast<model::EnumType>(T);
-          Enum->CustomName = Name;
-
-          const QualifiedType *QualifiedUnderlyingType = rc_recur getType(Die);
-          if (QualifiedUnderlyingType == nullptr) {
-            reportIgnoredDie(Die,
-                             "The enum underlying type cannot be resolved");
-            return nullptr;
-          }
-
-          revng_assert(QualifiedUnderlyingType->Qualifiers.empty());
-          const model::Type *UnderlyingType = nullptr;
-          UnderlyingType = QualifiedUnderlyingType->UnqualifiedType.get();
-          Enum->UnderlyingType = Model->getTypePath(UnderlyingType);
-
-          uint64_t Index = 0;
-          for (const DWARFDie &ChildDie : Die.children()) {
-            if (ChildDie.getTag() == DW_TAG_enumerator) {
-              // Collect value
-              auto MaybeValue = getUnsignedOrSigned(ChildDie,
-                                                    DW_AT_const_value);
-              if (not MaybeValue) {
-                reportIgnoredDie(ChildDie,
-                                 "Ignoring enum entry " + Twine(Index + 1)
-                                   + " without a value");
-                return nullptr;
-              }
-
-              uint64_t Value = *MaybeValue;
-
-              // Create new entry
-              model::Identifier EntryName = getName(ChildDie);
-
-              // If it's the first time, set CustomName, otherwise, introduce
-              // an alias
-              auto It = Enum->Entries.find(Value);
-              if (It == Enum->Entries.end()) {
-                auto &Entry = Enum->Entries[Value];
-                Entry.CustomName = EntryName;
-              } else {
-                It->Aliases.insert(EntryName);
-              }
-
-              ++Index;
-            }
-          }
-
-        } break;
-
-        default:
-          reportIgnoredDie(Die, "Unknown type");
-          return nullptr;
-        }
-
-        Placeholders.erase(Offset);
-      }
     } break;
 
     case RegularType:
@@ -704,8 +736,8 @@ private:
     using namespace model;
 
     // Create function type
-    auto Path = Model->recordNewType(makeType<CABIFunctionType>());
-    auto *FunctionType = cast<model::CABIFunctionType>(Path.get());
+    UpcastableType NewType = makeType<CABIFunctionType>();
+    auto *FunctionType = cast<model::CABIFunctionType>(NewType.get());
     FunctionType->CustomName = getName(Die);
 
     // Detect ABI
@@ -714,6 +746,11 @@ private:
     if (MaybeCC)
       CC = static_cast<CallingConvention>(*MaybeCC);
     FunctionType->ABI = getABI(CC);
+
+    if (FunctionType->ABI == model::abi::Invalid) {
+      reportIgnoredDie(Die, "Unknown calling convention");
+      return std::nullopt;
+    }
 
     // Arguments
     uint64_t Index = 0;
@@ -724,7 +761,7 @@ private:
           reportIgnoredDie(Die,
                            "The type of argument " + Twine(Index + 1)
                              + " cannot be resolved");
-          return {};
+          return std::nullopt;
         }
 
         model::Argument &NewArgument = FunctionType->Arguments[Index];
@@ -736,8 +773,9 @@ private:
 
     // Return type
     FunctionType->ReturnType = getTypeOrVoid(Die);
+    revng_assert(FunctionType->ReturnType.UnqualifiedType.isValid());
 
-    return Path;
+    return Model->recordNewType(std::move(NewType));
   }
 
   void createDynamicFunctions() {
@@ -749,14 +787,18 @@ private:
           continue;
 
         auto MaybePath = getSubprogramPrototype(Die);
-        if (not MaybePath)
+        if (not MaybePath) {
+          reportIgnoredDie(Die, "Couldn't build subprogram prototype");
           continue;
+        }
 
         auto *FunctionType = cast<model::CABIFunctionType>(MaybePath->get());
 
         auto Name = FunctionType->CustomName.str();
-        if (Name.size() == 0)
+        if (Name.size() == 0) {
+          reportIgnoredDie(Die, "Subprogram has no name");
           continue;
+        }
 
         // Create actual function
         model::DynamicFunction
@@ -764,6 +806,8 @@ private:
         Function.CustomName = FunctionType->CustomName;
         Function.SymbolName = Name;
         Function.Prototype = *MaybePath;
+        revng_assert(Function.Prototype.isValid());
+        revng_assert(FunctionType->ReturnType.UnqualifiedType.isValid());
       }
     }
   }
@@ -776,7 +820,8 @@ private:
     unsigned DroppedTypes = dropTypesDependingOnTypes(Model, ToDrop);
 
     revng_log(DILogger,
-              "Purging " << DroppedTypes << " types due to "
+              "Purging " << DroppedTypes << " types (out of "
+                         << TypesWithIdentityCount << ") due to "
                          << Placeholders.size() << " unresolved types");
 
     Placeholders.clear();
@@ -787,9 +832,9 @@ public:
     materializeTypesWithIdentity();
     resolveAllTypes();
     createDynamicFunctions();
-    deduplicateNames(Model);
     dropTypesDependingOnUnresolvedTypes();
     deduplicateEquivalentTypes(Model);
+    deduplicateNames(Model);
     revng_assert(Placeholders.size() == 0);
     Model->verify(true);
   }
@@ -871,7 +916,8 @@ void DwarfImporter::import(StringRef FileName) {
   // 3. Look for each library in ld.so.conf directories
   // 4. Go to 1
   //
-  // Source: https://sourceware.org/gdb/onlinedocs/gdb/Separate-Debug-Files.html
+  // Source:
+  // https://sourceware.org/gdb/onlinedocs/gdb/Separate-Debug-Files.html
 
   ErrorOr<std::unique_ptr<MemoryBuffer>>
     BuffOrErr = MemoryBuffer::getFileOrSTDIN(FileName);

@@ -39,6 +39,11 @@ unsigned dropTypesDependingOnTypes(TupleTree<model::Binary> &Model,
 
   // Populate the graph
   for (UpcastablePointer<model::Type> &T : Model->Types) {
+
+    // Ignore dependencies of
+    if (Types.count(T.get()) != 0)
+      continue;
+
     if (auto *Primitive = dyn_cast<model::PrimitiveType>(T.get())) {
       // Nothing to do here
     } else if (auto *Struct = dyn_cast<model::StructType>(T.get())) {

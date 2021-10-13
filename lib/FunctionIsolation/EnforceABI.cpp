@@ -21,6 +21,7 @@
 #include "revng/ADT/SmallMap.h"
 #include "revng/FunctionIsolation/EnforceABI.h"
 #include "revng/FunctionIsolation/StructInitializers.h"
+#include "revng/Model/Register.h"
 #include "revng/Model/Type.h"
 #include "revng/StackAnalysis/ABI.h"
 #include "revng/Support/FunctionTags.h"
@@ -192,6 +193,11 @@ void EnforceABIImpl::run() {
   }
 }
 
+static Type *getLLVMTypeForRegister(Module *M, model::Register::Values V) {
+  LLVMContext &C = M->getContext();
+  return IntegerType::getIntNTy(C, 8 * model::Register::getSize(V));
+}
+
 static FunctionType *
 toLLVMType(llvm::Module *M, const model::RawFunctionType &Prototype) {
   using model::NamedTypedRegister;
@@ -203,17 +209,11 @@ toLLVMType(llvm::Module *M, const model::RawFunctionType &Prototype) {
   SmallVector<llvm::Type *, 8> ArgumentsTypes;
   SmallVector<llvm::Type *, 8> ReturnTypes;
 
-  for (const NamedTypedRegister &TR : Prototype.Arguments) {
-    auto Name = ABIRegister::toCSVName(TR.Location);
-    auto *CSV = cast<GlobalVariable>(M->getGlobalVariable(Name, true));
-    ArgumentsTypes.push_back(CSV->getType()->getPointerElementType());
-  }
+  for (const NamedTypedRegister &TR : Prototype.Arguments)
+    ArgumentsTypes.push_back(getLLVMTypeForRegister(M, TR.Location));
 
-  for (const TypedRegister &TR : Prototype.ReturnValues) {
-    auto Name = ABIRegister::toCSVName(TR.Location);
-    auto *CSV = cast<GlobalVariable>(M->getGlobalVariable(Name, true));
-    ReturnTypes.push_back(CSV->getType()->getPointerElementType());
-  }
+  for (const TypedRegister &TR : Prototype.ReturnValues)
+    ReturnTypes.push_back(getLLVMTypeForRegister(M, TR.Location));
 
   // Create the return type
   Type *ReturnType = Type::getVoidTy(Context);

@@ -13,6 +13,7 @@
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/MathExtras.h"
 
+#include "revng/Model/ABI.h"
 #include "revng/Model/Binary.h"
 #include "revng/Model/Type.h"
 #include "revng/Model/VerifyHelper.h"
@@ -263,7 +264,7 @@ isValidPrimitiveSize(PrimitiveTypeKind::Values PrimKind, uint8_t BS) {
     return BS == 1 or BS == 2 or BS == 4 or BS == 8 or BS == 16;
 
   case PrimitiveTypeKind::Float:
-    return BS == 2 or BS == 4 or BS == 8 or BS == 16;
+    return BS == 2 or BS == 4 or BS == 8 or BS == 12 or BS == 16;
 
   default:
     revng_abort();
@@ -274,7 +275,6 @@ isValidPrimitiveSize(PrimitiveTypeKind::Values PrimKind, uint8_t BS) {
 
 Identifier model::PrimitiveType::name() const {
   using llvm::Twine;
-  revng_assert(isValidPrimitiveSize(PrimitiveKind, Size));
   Identifier Result;
 
   switch (PrimitiveKind) {
@@ -810,6 +810,9 @@ static RecursiveCoroutine<bool>
 verifyImpl(VerifyHelper &VH, const CABIFunctionType *T) {
   if (not T->CustomName.verify(VH) or T->Kind != TypeKind::CABIFunctionType
       or not rc_recur T->ReturnType.verify(VH))
+    rc_return VH.fail();
+
+  if (T->ABI == model::abi::Invalid)
     rc_return VH.fail();
 
   for (auto &Group : llvm::enumerate(T->Arguments)) {
