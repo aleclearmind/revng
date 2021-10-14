@@ -9,6 +9,7 @@
 #include <optional>
 
 #include "llvm/ADT/DepthFirstIterator.h"
+#include "llvm/ADT/EquivalenceClasses.h"
 #include "llvm/ADT/Optional.h"
 #include "llvm/ADT/Triple.h"
 #include "llvm/BinaryFormat/Dwarf.h"
@@ -353,15 +354,23 @@ private:
     TypesWithIdentityCount = Placeholders.size();
   }
 
-  static model::Identifier getName(const DWARFDie &Die) {
+  static std::string getName(const DWARFDie &Die) {
     auto MaybeName = Die.find(DW_AT_name);
     if (MaybeName) {
       auto MaybeString = MaybeName->getAsCString();
       if (MaybeString)
-        return model::Identifier::fromString(*MaybeString);
+        return *MaybeString;
     }
 
     return {};
+  }
+
+  static model::Identifier getNameAsIdentifier(const DWARFDie &Die) {
+    std::string Name = getName(Die);
+    if (not Name.empty())
+      return model::Identifier::fromString(Name);
+    else
+      return {};
   }
 
   RecursiveCoroutine<const model::QualifiedType *>
@@ -399,7 +408,7 @@ private:
     revng_assert(TypePath->Qualifiers.empty());
     model::Type *T = TypePath->UnqualifiedType.get();
 
-    model::Identifier Name = getName(Die);
+    model::Identifier Name = getNameAsIdentifier(Die);
 
     if (InvalidPrimitives.count(T) != 0)
       return nullptr;
@@ -492,7 +501,7 @@ private:
 
           //  Create new field
           auto &Field = Struct->Fields[Offset];
-          Field.CustomName = getName(ChildDie);
+          Field.CustomName = getNameAsIdentifier(ChildDie);
           Field.Type = *MemberType;
 
           ++Index;
@@ -523,7 +532,7 @@ private:
 
           // Create new field
           auto &Field = Union->Fields[Index];
-          Field.CustomName = getName(ChildDie);
+          Field.CustomName = getNameAsIdentifier(ChildDie);
           Field.Type = *MemberType;
 
           // Increment union index
@@ -568,7 +577,7 @@ private:
           uint64_t Value = *MaybeValue;
 
           // Create new entry
-          model::Identifier EntryName = getName(ChildDie);
+          model::Identifier EntryName = getNameAsIdentifier(ChildDie);
 
           // If it's the first time, set CustomName, otherwise, introduce
           // an alias
@@ -738,7 +747,7 @@ private:
     // Create function type
     UpcastableType NewType = makeType<CABIFunctionType>();
     auto *FunctionType = cast<model::CABIFunctionType>(NewType.get());
-    FunctionType->CustomName = getName(Die);
+    FunctionType->CustomName = getNameAsIdentifier(Die);
 
     // Detect ABI
     CallingConvention CC = DW_CC_normal;
@@ -765,7 +774,7 @@ private:
         }
 
         model::Argument &NewArgument = FunctionType->Arguments[Index];
-        NewArgument.CustomName = getName(ChildDie);
+        NewArgument.CustomName = getNameAsIdentifier(ChildDie);
         NewArgument.Type = *ArgumenType;
         Index += 1;
       }
@@ -792,22 +801,15 @@ private:
           continue;
         }
 
-        auto *FunctionType = cast<model::CABIFunctionType>(MaybePath->get());
+        // Get/create dynamic function
+        auto &Function = Model->ImportedDynamicFunctions[getName(Die)];
 
-        auto Name = FunctionType->CustomName.str();
-        if (Name.size() == 0) {
-          reportIgnoredDie(Die, "Subprogram has no name");
+        // If a function already has a valid prototype, don't override it
+        if (Function.Prototype.isValid())
           continue;
-        }
 
-        // Create actual function
-        model::DynamicFunction
-          &Function = Model->ImportedDynamicFunctions[Name.str()];
-        Function.CustomName = FunctionType->CustomName;
-        Function.SymbolName = Name;
+        auto *FunctionType = cast<model::CABIFunctionType>(MaybePath->get());
         Function.Prototype = *MaybePath;
-        revng_assert(Function.Prototype.isValid());
-        revng_assert(FunctionType->ReturnType.UnqualifiedType.isValid());
       }
     }
   }
@@ -928,6 +930,128 @@ void DwarfImporter::import(StringRef FileName) {
   import(*BinOrErr->get(), FileName);
 }
 
+auto zip_pairs(auto &&R) {
+  auto BeginIt = R.begin();
+  auto EndIt = R.end();
+
+  if (BeginIt == EndIt)
+    return zip(make_range(EndIt, EndIt), make_range(EndIt, EndIt));
+
+  auto First = BeginIt;
+  auto Second = ++BeginIt;
+
+  if (Second == EndIt)
+    return zip(make_range(EndIt, EndIt), make_range(EndIt, EndIt));
+
+  auto End = EndIt;
+  auto Last = --EndIt;
+
+  return zip(make_range(First, Last), make_range(Second, End));
+}
+
+/// This function considers all symbols with name of type STT_FUNC and clusters
+/// them by address/type
+static EquivalenceClasses<StringRef>
+computeEquivalentSymbols(const llvm::object::ObjectFile &ELF) {
+  using namespace llvm::object;
+
+  EquivalenceClasses<StringRef> Result;
+
+  struct SymbolDescriptor {
+    uint64_t Address = 0;
+    // TODO: one day we will want to consider STT_OBJECT too
+    SymbolRef::Type Type = SymbolRef::ST_Unknown;
+    /// \note we ignore this field for comparison purposes
+    StringRef Name;
+
+    auto key() const { return std::tie(Address, Type); }
+
+    bool operator<(const SymbolDescriptor &Other) const {
+      return key() < Other.key();
+    }
+
+    bool operator==(const SymbolDescriptor &Other) const {
+      return key() == Other.key();
+    }
+  };
+
+  std::vector<SymbolDescriptor> Symbols;
+  for (const object::SymbolRef &Symbol : ELF.symbols()) {
+    SymbolDescriptor NewSymbol;
+
+    auto MaybeType = Symbol.getType();
+    auto MaybeAddress = Symbol.getAddress();
+    auto MaybeName = Symbol.getName();
+    auto MaybeFlags = Symbol.getFlags();
+    if (not MaybeType or not MaybeAddress or not MaybeName or not MaybeFlags)
+      continue;
+
+    // Ignore unnamed and nullptr symbols
+    if (MaybeName->size() == 0 or *MaybeAddress == 0)
+      continue;
+
+    // Consider only STT_FUNC symbols
+    if (*MaybeType != SymbolRef::ST_Function)
+      continue;
+
+    // Consider only global symbols
+    if (!((*MaybeFlags) & SymbolRef::SF_Global))
+      continue;
+
+    Symbols.push_back({ *MaybeAddress, *MaybeType, *MaybeName });
+  }
+
+  llvm::sort(Symbols);
+
+  for (const auto &[Previous, Current] : zip_pairs(Symbols))
+    if (Previous == Current)
+      Result.unionSets(Previous.Name, Current.Name);
+
+  return Result;
+}
+
+// TODO: it wuold be beneficial to do this even at other levels
+inline void detectAliases(const llvm::object::ObjectFile &ELF,
+                          TupleTree<model::Binary> &Model) {
+  EquivalenceClasses<StringRef> Aliases = computeEquivalentSymbols(ELF);
+  auto &ImportedDynamicFunctions = Model->ImportedDynamicFunctions;
+
+  for (auto AliasesIt = Aliases.begin(), E = Aliases.end(); AliasesIt != E;
+       ++AliasesIt) {
+    if (AliasesIt->isLeader()) {
+      SmallVector<std::string, 4> UnprototypedFunctionsNames;
+      model::TypePath Prototype;
+      for (auto AliasSetIt = Aliases.member_begin(AliasesIt);
+           AliasSetIt != Aliases.member_end();
+           ++AliasSetIt) {
+        std::string Name = AliasSetIt->str();
+
+        // Create DynamicFunction, it doesn't exist already
+        auto It = ImportedDynamicFunctions.find(Name);
+        bool Found = It != ImportedDynamicFunctions.end();
+
+        // If DynamicFunction doesn't have a prototype, register it for copying
+        // it from the leader.
+        // Otherwise, record the type as the leader.
+        if (Found and It->Prototype.isValid()) {
+          Prototype = It->Prototype;
+        } else {
+          UnprototypedFunctionsNames.push_back(Name);
+        }
+      }
+
+      if (Prototype.isValid()) {
+        for (const std::string &Name : UnprototypedFunctionsNames) {
+          auto It = ImportedDynamicFunctions.find(Name);
+          if (It == ImportedDynamicFunctions.end())
+            It = ImportedDynamicFunctions.insert({ Name }).first;
+          It->Prototype = Prototype;
+        }
+      }
+    }
+  }
+}
+
 void DwarfImporter::import(const llvm::object::Binary &TheBinary,
                            StringRef FileName) {
   using namespace llvm::object;
@@ -950,6 +1074,8 @@ void DwarfImporter::import(const llvm::object::Binary &TheBinary,
                                     LoadedFiles.size(),
                                     AltIndex);
     Converter.run();
+
+    detectAliases(*ELF, Model);
   }
 
   LoadedFiles.push_back(sys::path::filename(FileName).str());

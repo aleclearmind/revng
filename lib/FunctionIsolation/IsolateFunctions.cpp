@@ -928,7 +928,7 @@ void IFI::run() {
     StringRef Name = Function.SymbolName;
     auto *NewFunction = Function::Create(IsolatedFunctionType,
                                          GlobalValue::ExternalLinkage,
-                                         "dynamic_" + Name,
+                                         "dynamic_" + Function.name(),
                                          TheModule);
     FunctionTags::DynamicFunction.addTo(NewFunction);
     auto *EntryBB = BasicBlock::Create(Context, "", NewFunction);

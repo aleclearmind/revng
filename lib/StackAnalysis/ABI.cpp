@@ -134,7 +134,7 @@ ABI<SystemV_x86_64>::toRaw(model::Binary &TheBinary,
     if (Original.ReturnType.isFloat())
       return {};
 
-    uint64_t AvailableRegisters = ReturnValueRegisters.size() * 8;
+    uint64_t AvailableRegisters = ReturnValueRegisters.size();
 
     std::optional<uint64_t> MaybeSize = Original.ReturnType.size(VH);
     revng_assert(MaybeSize);

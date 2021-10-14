@@ -1362,25 +1362,25 @@ void CodeGenerator::translate(Optional<uint64_t> RawVirtualAddress) {
   auto DefaultTypePath = abi::polyswitch(Arch.defaultABI(),
                                          GetDefaultPrototype);
 
-  // Record all dynamic imported functions
+  // Import Dwarf
+  DwarfImporter Importer(Model);
+  if (ImportDebugInfo.size() > 0)
+    for (const std::string &Path : ImportDebugInfo)
+      Importer.import(Path);
+  Importer.import(Binary.binary(), "");
+
+  revng_assert(Model->ImportedDynamicFunctions.isSorted());
+
+  // Record all dynamic imported functions and assign them a default prototype
   for (const Label &L : Binary.labels()) {
     if (L.origin() == LabelOrigin::DynamicRelocation and L.isCode()
         and not L.symbolName().empty()) {
-      model::DynamicFunction &F = *Model->ImportedDynamicFunctions
-                                     .insert({ L.symbolName().str() })
-                                     .first;
-      F.Prototype = DefaultTypePath;
+      auto &F = Model->ImportedDynamicFunctions[{ L.symbolName().str() }];
+      if (not F.Prototype.isValid())
+        F.Prototype = DefaultTypePath;
+      revng_assert(Model->ImportedDynamicFunctions.isSorted());
     }
   }
-
-  // Import Dwarf
-  DwarfImporter Importer(Model);
-  if (ImportDebugInfo.size() > 0) {
-    for (const std::string &Path : ImportDebugInfo) {
-      Importer.import(Path);
-    }
-  }
-  Importer.import(Binary.binary(), "");
 
   writeModel(*Model.get(), *TheModule);
 
