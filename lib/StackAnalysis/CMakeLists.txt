@@ -21,7 +21,3 @@ target_link_libraries(revngStackAnalysis
   revngSupport
   revngModel
   ${LLVM_LIBRARIES})
-
-target_include_directories(revngStackAnalysis
-  PRIVATE
-  "${CMAKE_CURRENT_BINARY_DIR}")
