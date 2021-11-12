@@ -18,7 +18,7 @@ set(ANALYSIS_DIFF_functionsboundaries "diff -u")
 set(ANALYSIS_OPT_stack_analysis "abi-analysis")
 set(ANALYSIS_OPT_OUTPUT_stack_analysis "abi-analysis-output")
 set(ANALYSIS_SUFFIX_stack_analysis ".stack-analysis.json")
-set(ANALYSIS_DIFF_stack_analysis "${CMAKE_SOURCE_DIR}/scripts/compare-json.py --order")
+set(ANALYSIS_DIFF_stack_analysis "${CMAKE_SOURCE_DIR}/scripts/compare-yaml --order")
 
 set(USED_REFERENCE_FILES "")
 

@@ -1,0 +1,392 @@
+#!/usr/bin/env python3
+
+# This script compares two YAML files. In general, the reference YAML file is
+# supposed to be included in the other one. For instance, {"a": 1, "b": 2}
+# contains {"b": 2}. This is useful for enforcing the content of certain parts
+# of a YAML file, in particular during testing.
+
+import argparse
+import re
+import sys
+import yaml
+
+args = None
+indent = 0
+
+def do_log(indent, message):
+    message = message.replace("\n", "\n" + "  " * indent)
+    sys.stderr.write(("  " * indent) + message + "\n")
+
+def log(message, *extra_args):
+    do_log(indent, message, *extra_args)
+
+# Verbose log
+def vlog(message, *extra_args):
+    if args.verbose:
+        do_log(indent, message, *extra_args)
+
+def to_yaml(obj):
+    return yaml.dump(obj)
+
+placeholders_stack = [{}]
+current_placeholders = placeholders_stack[0]
+placeholders_re = re.compile(r"<<(.*?)>>")
+
+def dump_placeholders():
+    global indent
+    vlog("Placeholders:")
+    indent += 1
+    global current_placeholders
+    for placeholder, value in current_placeholders.items():
+        vlog(f"{placeholder}: {value}")
+    indent -= 1
+
+def compare_strings(reference, input, soft=False):
+    global indent
+    global current_placeholders
+
+    if soft:
+        original_indent = indent
+        def fail(a=None, b=None, c=None):
+            global indent
+            indent = original_indent
+            return False
+    else:
+        fail = quit
+
+    if not ("<<" in reference and ">>" in reference):
+        return reference == input
+
+    reference = re.escape(reference)
+    regexp = "^" + placeholders_re.sub(r"(?P<\1>.*)", reference) + "$"
+    result = re.match(regexp, input)
+
+    if not result:
+        return False
+
+    for name, value in result.groupdict().items():
+        if name in current_placeholders:
+            # We already met this placeholder, make sure it has the same value
+            old_value = current_placeholders[name]
+            if old_value != value:
+                return fail(f"Placeholder {name} has two different values:\n" +
+                            f"  {old_value}\n" +
+                            f"  {value}",
+                            None,
+                            None)
+        else:
+            # Record placeholder name for next time
+            vlog(f'Recording value "{value}" for "{name}"')
+            current_placeholders[name] = value
+
+    return True
+
+def compare_scalars(reference, input, soft=False):
+    assert type(reference) is type(input)
+    assert type(reference) not in [dict, list]
+    if type(reference) is str:
+        return compare_strings(reference, input, soft)
+    else:
+        return reference == input
+
+def log_yaml(log, message, reference, input):
+    global indent
+
+    log(message)
+
+    indent += 1
+
+    if reference is not None:
+        log("Reference:")
+        indent += 1
+        log(to_yaml(reference))
+        indent -= 1
+
+    if input is not None:
+        log("Input:")
+        indent += 1
+        log(to_yaml(input))
+        indent -= 1
+
+    indent -= 1
+
+def quit(message, reference, input):
+    global indent
+    indent = 0
+    log_yaml(log, message, reference, input)
+    dump_placeholders()
+    if args.__dict__["not"]:
+        sys.exit(0)
+    else:
+        sys.exit(1)
+
+def soft_compare(reference, input):
+    global current_placeholders
+    global placeholders_stack
+    # Append a clone of the current placeholders dict
+    placeholders_stack.append(dict(current_placeholders))
+    current_placeholders = placeholders_stack[-1]
+
+    result = compare(reference, input, True)
+
+    last_result = placeholders_stack.pop()
+    if placeholders_stack[-1] != last_result:
+        if result:
+            # Propagate the top of the stack to the second element
+            vlog("soft_compare succeed, commiting placeholders")
+            placeholders_stack[-1] = last_result
+        else:
+            vlog("soft_compare failed, rolling back placeholders")
+
+    current_placeholders = placeholders_stack[-1]
+
+    return result
+
+def compare(reference, input, soft=False):
+    global indent
+
+    if soft:
+        original_indent = indent
+        def fail(a=None, b=None, c=None):
+            global indent
+            indent = original_indent
+            return False
+    else:
+        fail = quit
+
+    log_yaml(vlog, ("soft_" if soft else "") + "compare:", reference, input)
+    indent += 1
+
+    same_type = type(reference) is type(input)
+    if type(reference) is str and not same_type:
+        vlog("Reference is string but input is not, compare with str(input)")
+        if not compare(reference, str(input), soft):
+            return fail()
+    elif args.exact:
+        if same_type and type(reference) is dict:
+            # TODO: implement breadth-first
+            if len(reference) != len(input):
+                return fail("Different length:", reference, input)
+            for index, (left, right) in enumerate(zip(reference.items(),
+                                                      input.items())):
+                vlog(f"Element {index}:")
+                indent += 1
+
+                indent += 1
+                vlog("Key:")
+                if not compare(left[0], right[0], soft):
+                    return fail()
+                indent -= 1
+
+                indent += 1
+                vlog("Value:")
+                if not compare(left[1], right[1], soft):
+                    return fail()
+
+                indent -= 1
+
+                indent -= 1
+
+        elif same_type and type(reference) is list:
+            if len(reference) != len(input):
+                return fail("Different length:", reference, input)
+
+            for index, (left, right) in enumerate(zip(reference, input)):
+                vlog(f"Element {index}:")
+                indent += 1
+                if not compare(left, right, soft):
+                    return fail()
+                indent -= 1
+        elif not same_type or not compare_scalars(reference, input, soft):
+            return fail("Difference:", reference, input)
+
+    elif same_type:
+        if type(reference) is dict:
+            # TODO: implement breadth-first
+            for index, (key, value) in enumerate(reference.items()):
+                vlog(f"Element {index}:")
+
+                indent += 1
+                if key not in input:
+                    return fail(f"Couldn't find the following key in a "
+                                + "dictionary: {key}",
+                                None,
+                                None)
+                elif not compare(value, input[key], soft):
+                    return fail()
+
+                indent -= 1
+
+        elif type(reference) is list:
+            if args.order:
+                start = 0
+                for index, reference_item in enumerate(reference):
+                    vlog(f"Element {index}:")
+                    indent += 1
+                    found = False
+                    for input_index, input_item in enumerate(input[start:]):
+                        if soft_compare(reference_item, input_item):
+                            found = True
+                            start = start + input_index + 1
+                            break
+                    indent -= 1
+
+                    if found:
+                        vlog(f"Match!")
+                    else:
+                        return fail("Couldn't find element of a list in order:",
+                                    reference_item,
+                                    None)
+            else:
+                for index, reference_item in enumerate(reference):
+                    vlog(f"Element {index}:")
+                    indent += 1
+                    found = False
+                    for input_item in input:
+                        if soft_compare(reference_item, input_item):
+                            found = True
+                            break
+                    if found:
+                        vlog("Match!")
+                        indent -= 1
+                    else:
+                        indent -= 1
+                        return fail(f"Couldn't find element {index} of a list:",
+                                    reference_item,
+                                    None)
+        else:
+            if not compare_scalars(reference, input, soft):
+                return fail()
+    else:
+        return fail("Different types met:", reference, input)
+
+    indent -= 1
+
+    return True
+
+def selftest():
+    global args
+    global placeholders_stack
+
+    def test(left, right):
+        indent = 0
+        placeholders_stack = [{}]
+        return soft_compare(left, right)
+
+    # Test --exact
+    args.exact = True
+    assert test({}, {})
+    assert test(3, 3)
+    assert not test(2, 3)
+    assert test([3], [3])
+    assert not test([2], [3])
+    assert not test([], {})
+    assert test({"a": 2}, {"a": 2})
+    assert not test({}, {"a": 2})
+    assert not test({"a": 2, "b": 3}, {"b": 3, "a": 2})
+    assert test([1,2,3], [1,2,3])
+    assert not test([1,3,2], [1,2,3])
+
+    # Test approximate for inclusion
+    args.exact = False
+    args.order = False
+    assert test({}, {})
+    assert not test({"a": 2}, {})
+    assert test([3], [3])
+    assert not test([2], [3])
+    assert not test([], {})
+    assert test({"a": 2}, {"a": 2})
+    assert test({}, {"a": 2})
+    assert test({"a": 2, "b": 3}, {"b": 3, "a": 2})
+    assert test([1,2,3], [1,2,3])
+    assert test([1,3,2], [1,2,3])
+
+    # Test --order
+    args.exact = False
+    args.order = True
+    assert test([1,2,3], [1,2,3])
+    assert not test([1,3,2], [1,2,3])
+
+    # Test promotion to string
+    assert test("1", 1)
+
+    # Test placeholders
+    assert test("<<one>>", "test")
+    assert test({"a": "<<one>>", "b": "<<one>>"},
+                {"a": "test", "b": "test"})
+    assert not test({"a": "<<one>>", "b": "<<one>>"},
+                    {"a": "test", "b": "other"})
+
+    reference = ["first: <<first>>",
+                 "second: <<second>>",
+                 "<<first>> <<second>>"]
+    assert test(reference,
+                ["first: one", "second: two", "one two"])
+    assert not test(reference,
+                    ["first: one", "second: two", "test two"])
+    assert not test(reference,
+                    ["first: one", "second: two", "one test"])
+
+    reference = [
+        {"a": "<<placeholder>>", "b": 2},
+        {"a": "<<placeholder>>", "b": 3},
+    ]
+    assert test(reference,
+                [
+                    {"a": "one", "b": 1},
+                    {"a": "two", "b": 2},
+                    {"a": "two", "b": 3},
+                ])
+    assert not test(reference,
+                    [
+                        {"a": "one", "b": 1},
+                        {"a": "one", "b": 2},
+                        {"a": "two", "b": 3},
+                    ])
+
+    return 0
+
+def main():
+    parser = argparse.ArgumentParser(description="Compare a YAML file against "
+                                     "a reference.")
+    parser.add_argument("reference",
+                        metavar="REFERENCE",
+                        help="The reference file.")
+    parser.add_argument("input", metavar="INPUT",
+                        default="/dev/stdin",
+                        help="The input file.")
+    parser.add_argument("--exact",
+                        action="store_true",
+                        help=("Match exactly, containing the reference is not "
+                              + "enough."))
+    parser.add_argument("--order",
+                        action="store_true",
+                        help="The order of elements of a list matters.")
+    parser.add_argument("--not",
+                        action="store_true",
+                        help="If it matches, return an error.")
+    parser.add_argument("--verbose",
+                        action="store_true",
+                        help="Print each element being compared.")
+    parser.add_argument("--selftest",
+                        action="store_true",
+                        help="Run internal tests.")
+
+    global args
+    args = parser.parse_args()
+
+    if args.selftest:
+        return selftest()
+
+    with open(args.reference) as reference_file, open(args.input) as input_file:
+        reference = yaml.safe_load(reference_file)
+        input = yaml.safe_load(input_file)
+
+    compare(reference, input)
+
+    dump_placeholders()
+
+    return 0
+
+if __name__ == "__main__":
+    sys.exit(main())
