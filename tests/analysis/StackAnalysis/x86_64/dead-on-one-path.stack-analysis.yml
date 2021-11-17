@@ -1,0 +1,8 @@
+---
+Functions:
+- CustomName: func
+  Prototype: "/Types/RawFunctionType-<<TYPE_ID1>>"
+Types:
+- Arguments:
+  - Location: rax_x86_64
+  ID: "<<TYPE_ID1>>"

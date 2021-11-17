@@ -1,0 +1,8 @@
+---
+Functions:
+- CustomName: indirect_caller
+  Prototype: "/Types/RawFunctionType-<<TYPE_ID1>>"
+Types:
+- ID: "<<TYPE_ID1>>"
+  PreservedRegisters:
+  - r12_x86_64
