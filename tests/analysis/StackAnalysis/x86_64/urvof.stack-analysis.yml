@@ -1,8 +1,8 @@
 ---
 Functions:
 - CustomName: urvof
-  Prototype: "/Types/RawFunctionType-<<TYPE_ID1>>"
+  Prototype: "/Types/RawFunctionType-1"
 Types:
-- ID: "<<TYPE_ID1>>"
+- ID: "1"
   ReturnValues:
   - Location: rax_x86_64
