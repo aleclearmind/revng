@@ -117,11 +117,7 @@ private:
       } while (GroupEnd != End and ComputeKey(*GroupEnd) == GroupKey);
 
       if (not GroupKey.first.empty()) {
-        // Iterate over ToTest and purge duplicate elements in the meantime
-        for (auto It = ToTest.begin(), End = ToTest.end(); It != End; ++It) {
-          model::Type *Left = *It;
-
-          auto IsDuplicate = [Left, this](model::Type *Right) {
+        auto IsDuplicate = [this](model::Type *Left, model::Type *Right) {
             revng_assert(Left != Right
                          and not WeakEquivalence.isEquivalent(Left, Right));
             if (localCompare(Left, Right)) {
@@ -147,10 +143,7 @@ private:
               return false;
             }
           };
-
-          // Compare with all those after It and delete them if match
-          End = ToTest.erase(std::remove_if(It + 1, End, IsDuplicate), End);
-        }
+          asd(Test, IsDuplicate);
 
         revng_log(Log,
                   GroupName << " has " << ToTest.size()
