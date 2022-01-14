@@ -21,9 +21,9 @@ using namespace model;
 
 static Logger<> Log("model-types-deduplication");
 
-// WIP: review logging
-inline void asd(SmallVector<model::Type *> &ToTest,
-                std::function<bool(model::Type *, model::Type *)> &Compare) {
+inline void
+compareAll(SmallVector<model::Type *> &ToTest,
+           std::function<bool(model::Type *, model::Type *)> Compare) {
   for (auto It = ToTest.begin(), End = ToTest.end(); It != End; ++It) {
     model::Type *Left = *It;
 
@@ -117,33 +117,35 @@ private:
       } while (GroupEnd != End and ComputeKey(*GroupEnd) == GroupKey);
 
       if (not GroupKey.first.empty()) {
-        auto IsDuplicate = [this](model::Type *Left, model::Type *Right) {
-            revng_assert(Left != Right
-                         and not WeakEquivalence.isEquivalent(Left, Right));
-            if (localCompare(Left, Right)) {
-              revng_log(Log,
-                        Left->ID << " and " << Right->ID
-                                 << " are weakly equivalent");
 
-              // Record as weakly equivalent
-              WeakEquivalence.unionSets(Left, Right);
+        auto Compare = [this](model::Type *Left, model::Type *Right) -> bool {
+          revng_assert(Left != Right
+                       and not WeakEquivalence.isEquivalent(Left, Right));
+          if (localCompare(Left, Right)) {
+            revng_log(Log,
+                      Left->ID << " and " << Right->ID
+                               << " are weakly equivalent");
 
-              return true;
-            } else {
-              // This is kind of unusual
-              if (Log.isEnabled()) {
-                Log << "The following types have same kind and name but are "
-                       "locally different.";
-                model::Type *M = Left;
-                upcast(M, [](auto &U) { serialize(Log, U); });
-                upcast(Right, [](auto &U) { serialize(Log, U); });
-                Log << DoLog;
-              }
+            // Record as weakly equivalent
+            WeakEquivalence.unionSets(Left, Right);
 
-              return false;
+            return true;
+          } else {
+            // This is kind of unusual
+            if (Log.isEnabled()) {
+              Log << "The following types have same kind and name but are "
+                     "locally different.";
+              model::Type *M = Left;
+              upcast(M, [](auto &U) { serialize(Log, U); });
+              upcast(Right, [](auto &U) { serialize(Log, U); });
+              Log << DoLog;
             }
-          };
-          asd(Test, IsDuplicate);
+
+            return false;
+          }
+        };
+
+        compareAll(ToTest, Compare);
 
         revng_log(Log,
                   GroupName << " has " << ToTest.size()
@@ -226,43 +228,27 @@ private:
       auto LeaderIt = WeakEquivalence.findValue(Leader);
       revng_assert(LeaderIt->isLeader());
 
-#if 0
       SmallVector<model::Type *> ToTest;
       std::copy(WeakEquivalence.member_begin(LeaderIt),
                 WeakEquivalence.member_end(),
                 std::back_inserter(ToTest));
 
-      // Iterate over ToTest and purge duplicate elements in the meantime
-      for (auto It = ToTest.begin(), End = ToTest.end(); It != End; ++It) {
-        model::Type *Left = *It;
-        auto IsDuplicate = [Left, this](model::Type *Right) {};
-      }
-#endif
+      auto Compare = [this](model::Type *Left, model::Type *Right) {
+        if (Left == Right or StrongEquivalence.isEquivalent(Left, Right))
+          return true;
 
-      auto GroupStart = WeakEquivalence.member_begin(LeaderIt);
-      auto GroupEnd = WeakEquivalence.member_end();
-      for (auto It = GroupStart; It != GroupEnd; ++It) {
-        // auto It = GroupStart; {
-        model::Type *Left = *It;
-        auto GroupNext = It;
-        ++GroupNext;
-        revng_log(Log, "Considering " << Left->ID);
-        LoggerIndent Indent3(Log);
+        revng_log(Log, "Comparing " << Left->ID << " and " << Right->ID);
+        LoggerIndent Indent(Log);
 
-        for (model::Type *Right : make_range(GroupNext, GroupEnd)) {
-          if (Left != Right
-              and not StrongEquivalence.isEquivalent(Left, Right)) {
+        bool Result = deepCompare(Left, Right);
 
-            revng_log(Log, "Comparing " << Left->ID << " and " << Right->ID);
-            LoggerIndent Indent(Log);
+        revng_log(Log, "Comparison result: " << (Result ? "true" : "false"));
 
-            bool Result = deepCompare(Left, Right);
+        return Result;
+      };
 
-            revng_log(Log,
-                      "Comparison result: " << (Result ? "true" : "false"));
-          }
-        }
-      }
+      compareAll(ToTest, Compare);
+
     }
   }
 
