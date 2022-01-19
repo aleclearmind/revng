@@ -26,36 +26,36 @@ const Identifier Identifier::Empty = Identifier("");
 
 const std::set<llvm::StringRef> ReservedKeywords = {
   // reserved keywords for primitive types
-  "void"
-  "pointer_or_number8_t"
-  "pointer_or_number16_t"
-  "pointer_or_number32_t"
-  "pointer_or_number64_t"
-  "pointer_or_number128_t"
-  "number8_t"
-  "number16_t"
-  "number32_t"
-  "number64_t"
-  "number128_t"
-  "generic8_t"
-  "generic16_t"
-  "generic32_t"
-  "generic64_t"
-  "generic128_t"
-  "int8_t"
-  "int16_t"
-  "int32_t"
-  "int64_t"
-  "int128_t"
-  "uint8_t"
-  "uint16_t"
-  "uint32_t"
-  "uint64_t"
-  "uint128_t"
-  "float16_t"
-  "float32_t"
-  "float64_t"
-  "float128_t"
+  "void",
+  "pointer_or_number8_t",
+  "pointer_or_number16_t",
+  "pointer_or_number32_t",
+  "pointer_or_number64_t",
+  "pointer_or_number128_t",
+  "number8_t",
+  "number16_t",
+  "number32_t",
+  "number64_t",
+  "number128_t",
+  "generic8_t",
+  "generic16_t",
+  "generic32_t",
+  "generic64_t",
+  "generic128_t",
+  "int8_t",
+  "int16_t",
+  "int32_t",
+  "int64_t",
+  "int128_t",
+  "uint8_t",
+  "uint16_t",
+  "uint32_t",
+  "uint64_t",
+  "uint128_t",
+  "float16_t",
+  "float32_t",
+  "float64_t",
+  "float128_t",
   // C reserved keywords
   "auto",
   "break",
@@ -373,6 +373,8 @@ PrimitiveType::PrimitiveType(PrimitiveTypeKind::Values PrimitiveKind,
                              uint8_t Size) :
   PrimitiveType(AssociatedKind,
                 makePrimitiveID(PrimitiveKind, Size),
+                {},
+                "",
                 PrimitiveKind,
                 Size) {
 }
@@ -380,6 +382,8 @@ PrimitiveType::PrimitiveType(PrimitiveTypeKind::Values PrimitiveKind,
 PrimitiveType::PrimitiveType(uint64_t ID) :
   PrimitiveType(AssociatedKind,
                 ID,
+                {},
+                "",
                 getPrimitiveKind(ID),
                 getPrimitiveSize(ID)) {
 }
@@ -402,12 +406,7 @@ bool EnumEntry::verify(bool Assert) const {
 }
 
 bool EnumEntry::verify(VerifyHelper &VH) const {
-  for (const Identifier &Alias : Aliases)
-    if (not Alias.verify(VH))
-      return VH.fail();
-
-  return VH.maybeFail(CustomName.verify(VH) and not Aliases.count(CustomName)
-                      and not Aliases.count(Identifier::Empty));
+  return VH.maybeFail(CustomName.verify(VH));
 }
 
 static bool isOnlyConstQualified(const QualifiedType &QT) {
@@ -612,9 +611,22 @@ RecursiveCoroutine<std::optional<uint64_t>> Type::size(VerifyHelper &VH) const {
 
 static RecursiveCoroutine<bool>
 verifyImpl(VerifyHelper &VH, const PrimitiveType *T) {
-  rc_return VH.maybeFail(T->Kind == TypeKind::Primitive
-                         and makePrimitiveID(T->PrimitiveKind, T->Size) == T->ID
-                         and isValidPrimitiveSize(T->PrimitiveKind, T->Size));
+  revng_assert(T->Kind == TypeKind::Primitive);
+
+  if (not T->CustomName.empty() or not T->OriginalName.empty())
+    rc_return VH.fail("PrimitiveTypes cannot have OriginalName or CustomName",
+                      *T);
+
+  auto ExpectedID = makePrimitiveID(T->PrimitiveKind, T->Size);
+  if (T->ID != ExpectedID)
+    rc_return VH.fail(Twine("Wrong ID for PrimitiveType. Got: ") + Twine(T->ID)
+                        + ". Expected: " + Twine(ExpectedID) + ".",
+                      *T);
+
+  if (not isValidPrimitiveSize(T->PrimitiveKind, T->Size))
+    rc_return VH.fail("Invalid PrimitiveType size: " + Twine(T->Size), *T);
+
+  rc_return true;
 }
 
 bool Identifier::verify() const {

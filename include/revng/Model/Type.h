@@ -27,6 +27,12 @@ fields:
     type: model::TypeKind::Values
   - name: ID
     type: uint64_t
+  - name: CustomName
+    type: Identifier
+    optional: true
+  - name: OriginalName
+    type: std::string
+    optional: true
 key:
   - Kind
   - ID
@@ -48,7 +54,12 @@ public:
   //  manually implemented in order to generate a random ID
   Type();
   Type(TypeKind::Values TK);
-  Type(TypeKind::Values Kind, uint64_t ID) : model::generated::Type(Kind, ID) {}
+  Type(TypeKind::Values Kind, uint64_t ID) : Type(Kind, ID, Identifier(), "") {}
+  Type(TypeKind::Values Kind,
+       uint64_t ID,
+       Identifier CustomName,
+       std::string OriginalName) :
+    model::generated::Type(Kind, ID, CustomName, OriginalName) {}
 
 public:
   static bool classof(const Type *T) { return classof(T->key()); }
@@ -59,6 +70,14 @@ public:
 public:
   std::optional<uint64_t> size() const debug_function;
   RecursiveCoroutine<std::optional<uint64_t>> size(VerifyHelper &VH) const;
+
+public:
+  llvm::SmallVector<model::QualifiedType, 4> edges() {
+    llvm::SmallVector<model::QualifiedType, 4> Empty;
+    auto *This = this;
+    auto GetEdges = [](auto &Upcasted) { return Upcasted.edges(); };
+    return upcast(This, GetEdges, Empty);
+  }
 
 public:
   bool verify() const debug_function;

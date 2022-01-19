@@ -21,7 +21,7 @@ using namespace model;
 
 static Logger<> Log("model-types-deduplication");
 
-inline void
+static void
 compareAll(SmallVector<model::Type *> &ToTest,
            std::function<bool(model::Type *, model::Type *)> Compare) {
   for (auto It = ToTest.begin(), End = ToTest.end(); It != End; ++It) {
@@ -34,21 +34,6 @@ compareAll(SmallVector<model::Type *> &ToTest,
     // Compare with all those after It and delete them if match
     End = ToTest.erase(std::remove_if(It + 1, End, IsDuplicate), End);
   }
-}
-
-// WIP: move
-static StringRef typeCustomName(const model::Type *T) {
-  return upcast(
-    T,
-    [](auto &Upcasted) -> StringRef {
-      using UpcastedType = std::decay_t<decltype(Upcasted)>;
-      if constexpr (std::is_same_v<UpcastedType, model::PrimitiveType>) {
-        return "";
-      } else {
-        return Upcasted.CustomName;
-      }
-    },
-    StringRef(""));
 }
 
 class TypeSystemDeduplicator {
@@ -90,7 +75,7 @@ private:
     LoggerIndent Indent(Log);
 
     auto ComputeKey = [](model::Type *T) {
-      return std::pair{ typeCustomName(T), T->Kind };
+      return std::pair{ T->OriginalName, T->Kind };
     };
 
     // Sort types by the key (the name)
@@ -104,7 +89,7 @@ private:
       // Find group end and collect types
       auto GroupKey = ComputeKey(*GroupStart);
       std::string GroupName = (TypeKind::getName(GroupKey.second) + " "
-                               + GroupKey.first.str())
+                               + GroupKey.first)
                                 .str();
       revng_log(Log, "Considering \"" << GroupName << "\"");
       LoggerIndent Indent2(Log);
@@ -164,34 +149,10 @@ private:
     for (model::Type *T : Types)
       TypeToNode[T] = TypeGraph.addNode(TypeNode{ T });
 
-    // WIP: we need to factor this code out
-    for (model::Type *T : Types) {
-      if (auto *Primitive = dyn_cast<model::PrimitiveType>(T)) {
-        // Nothing to do here
-      } else if (auto *Struct = dyn_cast<model::StructType>(T)) {
-        for (model::StructField &Field : Struct->Fields)
-          addEdge(T, Field.Type);
-      } else if (auto *Union = dyn_cast<model::UnionType>(T)) {
-        for (model::UnionField &Field : Union->Fields)
-          addEdge(T, Field.Type);
-      } else if (auto *Enum = dyn_cast<model::EnumType>(T)) {
-        model::QualifiedType QT{ Enum->UnderlyingType };
+    // Create edges
+    for (model::Type *T : Types)
+      for (model::QualifiedType &QT : T->edges())
         addEdge(T, QT);
-      } else if (auto *Typedef = dyn_cast<model::TypedefType>(T)) {
-        addEdge(T, Typedef->UnderlyingType);
-      } else if (auto *RFT = dyn_cast<model::RawFunctionType>(T)) {
-        for (model::NamedTypedRegister &Argument : RFT->Arguments)
-          addEdge(T, Argument.Type);
-        for (model::TypedRegister &RV : RFT->ReturnValues)
-          addEdge(T, RV.Type);
-      } else if (auto *CAFT = dyn_cast<model::CABIFunctionType>(T)) {
-        for (model::Argument &Argument : CAFT->Arguments)
-          addEdge(T, Argument.Type);
-        addEdge(T, CAFT->ReturnType);
-      } else {
-        revng_abort();
-      }
-    }
   }
 
   /// Compute a visit order: post order in the leaders of WeakEquivalence
@@ -221,10 +182,10 @@ private:
     LoggerIndent Indent(Log);
 
     for (model::Type *Leader : VisitOrder) {
-      revng_log(Log, "Considering " << typeCustomName(Leader).str());
+      revng_log(Log, "Considering " << Leader->OriginalName);
       LoggerIndent Indent2(Log);
 
-      revng_assert(not typeCustomName(Leader).empty());
+      revng_assert(not Leader->OriginalName.empty());
       auto LeaderIt = WeakEquivalence.findValue(Leader);
       revng_assert(LeaderIt->isLeader());
 
@@ -248,7 +209,6 @@ private:
       };
 
       compareAll(ToTest, Compare);
-
     }
   }
 
@@ -265,12 +225,35 @@ private:
 
   bool
   localCompare(const model::StructType *Left, const model::StructType *Right) {
-    return (Left->Fields.size() == Right->Fields.size()
-            and Left->Size == Right->Size);
+    if (Left->Fields.size() != Right->Fields.size()
+        or Left->Size != Right->Size)
+      return false;
+
+    for (const auto &[LeftField, RightField] :
+         zip(Left->Fields, Right->Fields)) {
+      if (not(LeftField.Offset == RightField.Offset
+              and LeftField.CustomName == RightField.CustomName
+              and LeftField.OriginalName == RightField.OriginalName)) {
+        return false;
+      }
+    }
+
+    return true;
   }
 
   bool localCompare(const UnionType *Left, const UnionType *Right) {
-    return Left->Fields.size() == Right->Fields.size();
+    if (Left->Fields.size() != Right->Fields.size())
+      return false;
+
+    for (const auto &[LeftField, RightField] :
+         zip(Left->Fields, Right->Fields)) {
+      if (not(LeftField.CustomName == RightField.CustomName
+              and LeftField.OriginalName == RightField.OriginalName)) {
+        return false;
+      }
+    }
+
+    return true;
   }
 
   bool localCompare(const EnumType *Left, const EnumType *Right) {
@@ -323,7 +306,10 @@ private:
     if (Left->Kind != Right->Kind)
       return false;
 
-    if (typeCustomName(Left) != typeCustomName(Right))
+    if (Left->CustomName != Right->CustomName)
+      return false;
+
+    if (Left->OriginalName != Right->OriginalName)
       return false;
 
     auto UpcastedCompare = [this, Right](auto &LeftUpcasted) -> bool {
@@ -428,8 +414,8 @@ private:
       Visited.insert(Left);
       return true;
     } else if (WeakEquivalence.isEquivalent(Right->T, Left->T)
-               or (typeCustomName(Left->T).empty()
-                   and typeCustomName(Right->T).empty()
+               or (Left->T->OriginalName.empty()
+                   and Right->T->OriginalName.empty()
                    and localCompare(Left->T, Right->T))) {
       // Weak equivalence
       return true;

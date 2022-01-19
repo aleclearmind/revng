@@ -3,7 +3,8 @@
 #
 
 revng_add_library_internal(revngDwarfImporter SHARED
-  DwarfImporter.cpp)
+  DwarfImporter.cpp
+  PDBImporter.cpp)
 
 llvm_map_components_to_libnames(LLVM_LIBRARIES
   Object
