@@ -106,7 +106,7 @@ private:
         auto Compare = [this](model::Type *Left, model::Type *Right) -> bool {
           revng_assert(Left != Right
                        and not WeakEquivalence.isEquivalent(Left, Right));
-          if (localCompare(Left, Right)) {
+          if (Left->localCompare(*Right)) {
             revng_log(Log,
                       Left->ID << " and " << Right->ID
                                << " are weakly equivalent");
@@ -416,12 +416,12 @@ private:
     } else if (WeakEquivalence.isEquivalent(Right->T, Left->T)
                or (Left->T->OriginalName.empty()
                    and Right->T->OriginalName.empty()
-                   and localCompare(Left->T, Right->T))) {
+                   and Left->T->localCompare(*Right->T))) {
       // Weak equivalence
       return true;
     } else {
       // Otherwise, the nodes are not equivalent
-      revng_assert(not localCompare(Left->T, Right->T));
+      revng_assert(not Left->T->localCompare(*Right->T));
       revng_log(Log,
                 Left->T->ID << " and " << Right->T->ID
                             << " are locally different");

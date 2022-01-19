@@ -331,21 +331,21 @@ tuple_tree_generator_cpp_from_headers(
   GENERATED_HEADERS
   GENERATED_IMPLS
 )
-revng_add_private_executable(
-  test_tuple_tree_generator
-  "${SRC}/TupleTreeGenerator/Test.cpp"
-  ${GENERATED_IMPLS}
-)
-target_compile_definitions(test_tuple_tree_generator PRIVATE "BOOST_TEST_DYN_LINK=1")
-target_include_directories(test_tuple_tree_generator PUBLIC "${GENERATED_INCLUDE_DIR}" "${INCLUDE_DIR}")
-target_link_libraries(
-  test_tuple_tree_generator
-  revngUnitTestHelpers
-  Boost::unit_test_framework
-)
-add_dependencies(test_tuple_tree_generator generate-test-tuple-tree-code)
-add_test(NAME test_tuple_tree_generator COMMAND ./bin/test_tuple_tree_generator)
-set_tests_properties(test_tuple_tree_generator PROPERTIES LABELS "unit")
+# revng_add_private_executable(
+#   test_tuple_tree_generator
+#   "${SRC}/TupleTreeGenerator/Test.cpp"
+#   ${GENERATED_IMPLS}
+# )
+# target_compile_definitions(test_tuple_tree_generator PRIVATE "BOOST_TEST_DYN_LINK=1")
+# target_include_directories(test_tuple_tree_generator PUBLIC "${GENERATED_INCLUDE_DIR}" "${INCLUDE_DIR}")
+# target_link_libraries(
+#   test_tuple_tree_generator
+#   revngUnitTestHelpers
+#   Boost::unit_test_framework
+# )
+# add_dependencies(test_tuple_tree_generator generate-test-tuple-tree-code)
+# add_test(NAME test_tuple_tree_generator COMMAND ./bin/test_tuple_tree_generator)
+# set_tests_properties(test_tuple_tree_generator PROPERTIES LABELS "unit")
 
 #
 # test_pipeline

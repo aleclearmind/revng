@@ -110,7 +110,7 @@ struct /*= struct.fullname =*/
   bool operator==(const /*= struct.name =*/ &Other) const = default;
   /** endif **/
 
-  bool localCompare(const /*= struct.name =*/ &Other) const;
+  bool localCompare(const /*= struct.user_fullname =*/ &Other) const;
 
   static constexpr const char *Tag = "!/*= struct.tag =*/";
 };
@@ -129,51 +129,4 @@ struct concrete_types_traits</*= const_qualifier =*/ /*= struct.user_fullname =*
 };
 /** endfor **/
 /** endif **//*# End UpcastablePointer stuff #*/
-
-
-inline bool /*= struct.fullname =*/::localCompare(const /*= struct.fullname =*/ &Other) const {
-  /** for field in struct.fields if field.__class__.__name__ != "ReferenceStructField" **/
-
-  /**- if field.__class__.__name__ == "SimpleStructField" **/
-
-  /**- if generator.get_definition_for(field.type).__class__.__name__ == "StructDefinition" -**/
-  if (not this->/*= field.name =*/.localCompare(Other./*= field.name =*/)) return false;
-  /**- else -**/
-  if (not (this->/*= field.name =*/ == Other./*= field.name =*/)) return false;
-  /**- endif -**/
-
-  /**- elif field.__class__.__name__ == "SequenceStructField" -**/
-  /**- if generator.get_definition_for(field.element_type).__class__.__name__ == "StructDefinition" -**/
-  // Lamdas cannot capture structured bindings
-  for (const auto &LRTuple : llvm::zip(this->/*= field.name =*/, Other./*= field.name =*/)) {
-    const auto &L = std::get<0>(LRTuple);
-    const auto &R = std::get<1>(LRTuple);
-
-    /** if field.upcastable **/
-    bool CompareFails = false;
-    upcast(L, [&R, &CompareFails](const auto &UpcastedL){
-      upcast(R, [&UpcastedL, &CompareFails](const auto &UpcastedR){
-        if constexpr (not std::is_same_v<decltype(UpcastedL), decltype(UpcastedR)>) {
-          CompareFails = true;
-          return;
-        } else if (not UpcastedL.localCompare(UpcastedR)) CompareFails = true;
-      });
-    });
-    if (CompareFails) return false;
-
-    /** else **/
-    if (not L.localCompare(R)) return false;
-    /** endif **/
-
-  }
-  /**- else -**/
-  if (not (this->/*= field.name =*/ == Other./*= field.name =*/)) return false;
-  /**- endif -**/
-
-  /** else **//*= ERROR("unexpected field type") =*//** endif **/
-
-  /** endfor **/
-
-  return true;
-}
 
