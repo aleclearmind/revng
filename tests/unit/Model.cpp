@@ -279,7 +279,7 @@ BOOST_AUTO_TEST_CASE(TestModelDeduplication) {
     Right2->Fields[0].Type = { Model->getTypePath(Right1),
                                { PointerQualifier } };
 
-    revng_check(Dedup() == 1);
+    revng_check(Dedup() == 2);
   }
 }
 

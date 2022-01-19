@@ -89,34 +89,20 @@ bool /*= struct.fullname =*/::localCompare(const /*= struct.user_fullname =*/ &O
   /**- endif -**/
 
   /**- elif field.__class__.__name__ == "SequenceStructField" -**/
+  if (this->/*= field.name =*/.size() != Other./*= field.name =*/.size())
+    return false;
 
   /**- if generator.get_definition_for(field.element_type).__class__.__name__ == "StructDefinition" -**/
-  for (const auto &LRTuple : llvm::zip(this->/*= field.name =*/, Other./*= field.name =*/)) {
-    // Lamdas cannot capture structured bindings
-    const auto &L = std::get<0>(LRTuple);
-    const auto &R = std::get<1>(LRTuple);
-
-    // WIP
+  for (const auto &[L, R] : llvm::zip(this->/*= field.name =*/, Other./*= field.name =*/)) {
     /** if field.upcastable **/
-    bool Result = upcast(L, [&R](const auto &UpcastedL) -> bool {
-      return upcast(R, [&UpcastedL](const auto &UpcastedR) -> bool {
-        if constexpr (not std::is_same_v<decltype(UpcastedL), decltype(UpcastedR)>) {
-          return false;
-        } else {
-          return UpcastedL.localCompare(UpcastedR);
-        }
-      }, false);
-    }, false);
-
-    if (not Result)
+    if (not L->localCompare(*R))
       return false;
-
     /** else **/
     if (not L.localCompare(R))
       return false;
     /** endif **/
-
   }
+
   /**- else -**/
   if (this->/*= field.name =*/ != Other./*= field.name =*/)
     return false;

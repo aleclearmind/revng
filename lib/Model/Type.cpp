@@ -213,7 +213,7 @@ model::UpcastableType
 makeTypeWithID(model::TypeKind::Values Kind, uint64_t ID) {
   return makeTypeWithIDImpl(Kind, ID);
 }
-  
+
 Identifier model::UnionField::name() const {
   Identifier Result;
   if (CustomName.empty())

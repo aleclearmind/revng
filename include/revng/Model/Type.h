@@ -12,8 +12,8 @@
 #include "revng/ADT/UpcastablePointer/YAMLTraits.h"
 #include "revng/Model/ABI.h"
 #include "revng/Model/Identifier.h"
-#include "revng/Model/Register.h"
 #include "revng/Model/QualifiedType.h"
+#include "revng/Model/Register.h"
 #include "revng/Support/Assert.h"
 #include "revng/Support/Debug.h"
 #include "revng/Support/YAMLTraits.h"
@@ -87,8 +87,7 @@ namespace model {
 
 using UpcastableType = UpcastablePointer<model::Type>;
 
-model::UpcastableType
-makeTypeWithID(model::TypeKind::Values Kind, uint64_t ID);
+model::UpcastableType makeTypeWithID(model::TypeKind::Values Kind, uint64_t ID);
 
 using TypePath = TupleTreeReference<model::Type, model::Binary>;
 
