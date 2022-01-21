@@ -27,4 +27,6 @@ void promoteOriginalName(TupleTree<model::Binary> &Model);
 /// Best effort deduplication of types that are identical
 void deduplicateEquivalentTypes(TupleTree<model::Binary> &Model);
 
+void purgeUnamedAndUnreachableTypes(TupleTree<model::Binary> &Model);
+
 } // namespace model

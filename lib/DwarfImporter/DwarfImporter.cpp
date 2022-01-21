@@ -839,6 +839,7 @@ public:
     dropTypesDependingOnUnresolvedTypes();
     deduplicateEquivalentTypes(Model);
     promoteOriginalName(Model);
+    purgeUnamedAndUnreachableTypes(Model);
     revng_assert(Placeholders.size() == 0);
     Model->verify(true);
   }

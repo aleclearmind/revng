@@ -164,4 +164,78 @@ void deduplicateEquivalentTypes(TupleTree<model::Binary> &Model) {
   deduplicateEquivalentTypesImpl(Model);
 }
 
+template<typename V, typename T, size_t... Indices>
+static void
+visitTuple(V &&Visitor, T &Tuple, const std::index_sequence<Indices...> &) {
+  (Visitor(get<Indices>(Tuple)), ...);
+}
+
+// WIP: assert tuple like
+template<typename V, typename T>
+static void visitTuple(V &&Visitor, T &Tuple) {
+  visitTuple(std::forward<V>(Visitor),
+             Tuple,
+             std::make_index_sequence<std::tuple_size_v<T>>{});
+}
+
+void purgeUnamedAndUnreachableTypes(TupleTree<model::Binary> &Model) {
+  struct NodeData {
+    model::Type *T;
+  };
+  using Node = ForwardNode<NodeData>;
+  using Graph = GenericGraph<Node>;
+
+  Graph TypeGraph;
+  std::map<model::Type *, Node *> TypeToNode;
+
+  llvm::SmallPtrSet<Type *, 16> ToKeep;
+
+  // Create nodes
+  for (UpcastablePointer<model::Type> &T : Model->Types) {
+
+    if (not T->CustomName.empty() or not T->OriginalName.empty())
+      ToKeep.insert(T.get());
+
+    TypeToNode[T.get()] = TypeGraph.addNode(NodeData{ T.get() });
+  }
+
+  // Create type system edges
+  for (UpcastablePointer<model::Type> &T : Model->Types) {
+    for (model::QualifiedType &QT : T->edges()) {
+      auto *DependantType = QT.UnqualifiedType.get();
+      TypeToNode.at(T.get())->addSuccessor(TypeToNode.at(DependantType));
+    }
+  }
+
+  // Record references to types *outside* of Model->Types
+  visitTuple(
+    [&](auto &Field) {
+      if constexpr (std::is_same_v<std::decay_t<decltype(Field)>,
+                                   std::decay_t<decltype(Model->Types)>>) {
+        // Make sure we don't visit the type system
+        if (&Field != &Model->Types) {
+          auto Visitor = [&](auto &Element) {
+            using type = std::decay_t<decltype(Element)>;
+            // WIP: check destination type/path
+            if constexpr (IsTupleTreeReference<type>)
+              ToKeep.insert(Element.get());
+          };
+          visitTupleTree(Field, Visitor, [](auto) {});
+        }
+      }
+    },
+    *Model);
+
+  // Visit all the nodes reachable from ToKeep
+  df_iterator_default_set<Node *> Visited;
+  for (Type *T : ToKeep)
+    for (Node *N : depth_first_ext(TypeToNode.at(T), Visited))
+      ;
+
+  // Purge the non-visited
+  llvm::erase_if(Model->Types, [&](UpcastablePointer<model::Type> &P) {
+    return not Visited.contains(TypeToNode.at(P.get()));
+  });
+}
+
 } // namespace model
