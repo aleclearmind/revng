@@ -142,7 +142,7 @@ class StructDefinition(Definition):
         for dep in self.dependencies:
             dep_definition = generator.get_definition_for(dep)
             if dep_definition:
-                self.includes.add("revng/Model/" + dep_definition.filename)
+                self.includes.add(dep_definition.filename)
 
         if self._key:
             self.key_definition = self
