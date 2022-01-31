@@ -50,7 +50,7 @@ void LinkForTranslationPipe::run(const Context &Ctx,
 
   const size_t PageSize = 4096;
 
-  FileContainer LinkerOutput(Binary, InputBinary.name());
+  FileContainer LinkerOutput(Binary, InputBinary.name(), "");
 
   llvm::SmallVector<std::string, 0> Args = {
     ObjectFile.path()->str(),
@@ -98,6 +98,12 @@ void LinkForTranslationPipe::run(const Context &Ctx,
   for (const std::string &ImportedLibrary : Model.ImportedLibraries)
     Args.push_back(linkFunctionArgument(ImportedLibrary));
   Args.push_back("-Wl,--as-needed");
+
+  dbg << "revng";
+  for (const std::string &Arg : Args) {
+    dbg << " " << Arg;
+  }
+  dbg << "\n";
 
   // Prepare actual arguments
   int ExitCode = ::Runner.run("c++", Args);

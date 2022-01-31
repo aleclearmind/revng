@@ -22,8 +22,8 @@ namespace revng::pipes {
 
 char FileContainer::ID;
 
-FileContainer::FileContainer(Kind &K, llvm::StringRef Name) :
-  Container<FileContainer>(Name), Path(), K(&K) {
+FileContainer::FileContainer(Kind &K, llvm::StringRef Name, llvm::StringRef Suffix) :
+  Container<FileContainer>(Name), Path(), K(&K), Suffix(Suffix.str()) {
 }
 
 FileContainer::~FileContainer() {
@@ -32,7 +32,7 @@ FileContainer::~FileContainer() {
 
 llvm::StringRef FileContainer::getOrCreatePath() {
   if (Path.empty())
-    cantFail(llvm::sys::fs::createTemporaryFile("", "", Path));
+    cantFail(llvm::sys::fs::createTemporaryFile("", Suffix, Path));
 
   return llvm::StringRef(Path);
 }
@@ -47,7 +47,7 @@ FileContainer &FileContainer::operator=(const FileContainer &Other) noexcept {
     return *this;
 
   if (Path.empty())
-    cantFail(llvm::sys::fs::createTemporaryFile("", "", Path));
+    cantFail(llvm::sys::fs::createTemporaryFile("", Other.Suffix, Path));
   cantFail(llvm::sys::fs::copy_file(Other.Path, Path));
   return *this;
 }
@@ -66,10 +66,10 @@ FileContainer::cloneFiltered(const TargetsList &Container) const {
   bool MustCloneFile = Container.contains(getOnlyPossibleTarget());
 
   if (not MustCloneFile) {
-    return std::make_unique<FileContainer>(*K, this->name());
+    return std::make_unique<FileContainer>(*K, this->name(), Suffix);
   }
 
-  auto Result = std::make_unique<FileContainer>(*K, this->name());
+  auto Result = std::make_unique<FileContainer>(*K, this->name(), Suffix);
   Result->getOrCreatePath();
   cantFail(llvm::sys::fs::copy_file(Path, Result->Path));
   return Result;
@@ -94,7 +94,7 @@ llvm::Error FileContainer::storeToDisk(llvm::StringRef Path) const {
 
 llvm::Error FileContainer::loadFromDisk(llvm::StringRef Path) {
   if (not llvm::sys::fs::exists(Path)) {
-    *this = FileContainer(*K, this->name());
+    *this = FileContainer(*K, this->name(), Suffix);
     return llvm::Error::success();
   }
   getOrCreatePath();
