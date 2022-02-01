@@ -92,11 +92,11 @@ static opt<string> ExecutionDirectory("p",
                                       cat(PipelineCategory));
 
 static list<string>
-  loadLibraries("load", desc("libraries to open"), cat(PipelineCategory));
+  LoadLibraries("load", desc("libraries to open"), cat(PipelineCategory));
 
 static alias A1("l",
                 desc("Alias for --load"),
-                aliasopt(loadLibraries),
+                aliasopt(LoadLibraries),
                 cat(PipelineCategory));
 
 static opt<bool> PrintBuildableTargets("targets",
@@ -110,7 +110,7 @@ static alias A2("t",
                 aliasopt(PrintBuildableTargets),
                 cat(PipelineCategory));
 
-static ExitOnError exitOnError;
+static ExitOnError AbortOnError;
 
 static void runPipeline(Runner &Pipeline) {
 
@@ -118,9 +118,10 @@ static void runPipeline(Runner &Pipeline) {
 
   const auto &Registry = Pipeline.getKindsRegistry();
   for (const auto &Target : Targets)
-    exitOnError(parseTarget(ToProduce, Target, Registry));
+    AbortOnError(parseTarget(ToProduce, Target, Registry));
 
-  exitOnError(Pipeline.run(TargetStep, ToProduce, Silence ? nullptr : &dbgs()));
+  AbortOnError(
+    Pipeline.run(TargetStep, ToProduce, Silence ? nullptr : &dbgs()));
 }
 
 static auto makeManager() {
@@ -134,21 +135,21 @@ int main(int argc, const char *argv[]) {
   ParseCommandLineOptions(argc, argv);
 
   std::string Msg;
-  for (const auto &Library : loadLibraries) {
+  for (const auto &Library : LoadLibraries) {
     if (llvm::sys::DynamicLibrary::LoadLibraryPermanently(Library.c_str(),
                                                           &Msg))
-      exitOnError(llvm::createStringError(llvm::inconvertibleErrorCode(), Msg));
+      AbortOnError(createStringError(inconvertibleErrorCode(), Msg));
   }
 
   Registry::runAllInitializationRoutines();
 
-  auto Manager = exitOnError(makeManager());
+  auto Manager = AbortOnError(makeManager());
 
   for (const auto &Override : ContainerOverrides)
-    exitOnError(Manager.overrideContainer(Override));
+    AbortOnError(Manager.overrideContainer(Override));
 
   if (not ModelOverride.empty())
-    exitOnError(Manager.overrideModel(ModelOverride));
+    AbortOnError(Manager.overrideModel(ModelOverride));
 
   if (DumpPipeline) {
     Manager.dump();
@@ -160,11 +161,11 @@ int main(int argc, const char *argv[]) {
     return EXIT_SUCCESS;
   }
   if (ProduceAllPossibleTargets)
-    exitOnError(Manager.produceAllPossibleTargets());
+    AbortOnError(Manager.produceAllPossibleTargets());
   else
     runPipeline(Manager.getRunner());
-  exitOnError(Manager.store(StoresOverrides));
-  exitOnError(Manager.storeToDisk());
+  AbortOnError(Manager.store(StoresOverrides));
+  AbortOnError(Manager.storeToDisk());
 
   return EXIT_SUCCESS;
 }
