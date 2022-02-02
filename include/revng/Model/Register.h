@@ -8,6 +8,7 @@
 #include "llvm/ADT/Triple.h"
 
 #include "revng/ADT/KeyedObjectTraits.h"
+#include "revng/ADT/STLExtras.h"
 #include "revng/Model/Architecture.h"
 #include "revng/Support/Assert.h"
 #include "revng/Support/YAMLTraits.h"
@@ -513,9 +514,54 @@ inline size_t getSize(Values V) {
   }
 }
 
-} // namespace model::Register
+template<model::Architecture::Values Architecture>
+constexpr model::Register::Values getFirst() {
+  if constexpr (Architecture == model::Architecture::x86)
+    return model::Register::eax_x86;
+  else if constexpr (Architecture == model::Architecture::arm)
+    return model::Register::r0_arm;
+  else if constexpr (Architecture == model::Architecture::mips)
+    return model::Register::v0_mips;
+  else if constexpr (Architecture == model::Architecture::mipsel)
+    return model::Register::v0_mips;
+  else if constexpr (Architecture == model::Architecture::x86_64)
+    return model::Register::rax_x86_64;
+  else if constexpr (Architecture == model::Architecture::aarch64)
+    return model::Register::x0_aarch64;
+  else if constexpr (Architecture == model::Architecture::systemz)
+    return model::Register::r0_systemz;
+  else
+    static_assert(value_always_false<Architecture>::value,
+                  "Unsupported architecture");
+}
 
-namespace model::Register {
+template<model::Architecture::Values Architecture>
+constexpr model::Register::Values getLast() {
+  if constexpr (Architecture == model::Architecture::x86)
+    return model::Register::xmm7_x86;
+  else if constexpr (Architecture == model::Architecture::arm)
+    return model::Register::q7_arm;
+  else if constexpr (Architecture == model::Architecture::mips)
+    return model::Register::f31_mips;
+  else if constexpr (Architecture == model::Architecture::mipsel)
+    return model::Register::f31_mips;
+  else if constexpr (Architecture == model::Architecture::x86_64)
+    return model::Register::fs_x86_64;
+  else if constexpr (Architecture == model::Architecture::aarch64)
+    return model::Register::v31_aarch64;
+  else if constexpr (Architecture == model::Architecture::systemz)
+    return model::Register::f15_systemz;
+  else
+    static_assert(value_always_false<Architecture>::value,
+                  "Unsupported architecture");
+}
+
+template<model::Architecture::Values Architecture>
+constexpr model::Register::Values getCount() {
+  constexpr auto Result = getLast<Architecture>() - getFirst<Architecture>();
+  return model::Register::Values(Result + 1);
+}
+
 inline Values fromRegisterName(llvm::StringRef Name,
                                model::Architecture::Values Architecture) {
   std::string FullName = (llvm::Twine(Name) + "_"
