@@ -4,4 +4,4 @@
 
 add_subdirectory(lift)
 add_subdirectory(model)
-add_subdirectory(revng-pipeline)
+add_subdirectory(pipeline)
