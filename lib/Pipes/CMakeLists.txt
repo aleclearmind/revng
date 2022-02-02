@@ -8,7 +8,7 @@ revng_add_library_internal(revngPipes SHARED
   LiftPipe.cpp
   LinkSupportPipe.cpp
   LinkForTranslationPipe.cpp
-  RevngPipes.cpp
+  Pipes.cpp
   RootKind.cpp
   IsolatedKind.cpp
   PipelineManager.cpp

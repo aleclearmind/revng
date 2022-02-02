@@ -1,5 +1,5 @@
-/// \file RevngPipes.cpp
-/// \brief RevngPipes contains all the various pipes and kinds exposed by revng
+/// \file Pipes.cpp
+/// \brief Pipes contains all the various pipes and kinds exposed by revng
 
 //
 // This file is distributed under the MIT License. See LICENSE.md for details.
