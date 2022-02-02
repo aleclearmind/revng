@@ -86,28 +86,28 @@ bool rp_initialize(int argc,
                    const char *libraries_path[]);
 
 /**
- * @defgroup rp_targets_list rp container status methods
+ * \defgroup rp_targets_list rp container status methods
  */
 
 /**
- * @defgroup rp_container_identifier rp container methods
+ * \defgroup rp_container_identifier rp container methods
  */
 
 /**
- * @defgroup rp_step rp step methods
+ * \defgroup rp_step rp step methods
  */
 
 /**
- * @defgroup rp_target rp target methods
+ * \defgroup rp_target rp target methods
  */
 
 /**
- * @defgroup rp_kind rp kind methods
+ * \defgroup rp_kind rp kind methods
  */
 
 /**
- * @defgroup rp_manager rp manager methods
- * @{
+ * \defgroup rp_manager rp manager methods
+ * \{
  */
 
 /**
@@ -148,10 +148,10 @@ uint64_t rp_manager_containers_count(rp_manager *manager);
 rp_container_identifier *
 rp_manager_get_container_identifier(rp_manager *manager, uint64_t index);
 
-/** @} */
+/** \} */
 
 /**
- * @ingroup rp_container
+ * \ingroup rp_container
  * \return the name of the nth container registered inside the manager
  */
 const char *
@@ -159,7 +159,7 @@ rp_container_identifier_get_name(rp_container_identifier *container);
 
 /**
  *
- *  @ingroup rp_manager
+ *  \ingroup rp_manager
  * exactly like rp_manager_create except that instead of the path to a
  * pipeline yaml file this overload accepts the string containing the pipeline
  * directly
@@ -172,7 +172,7 @@ rp_manager *rp_manager_create_from_string(uint64_t pipelines_count,
                                           const char *execution_directory);
 
 /**
- *  @ingroup rp_manager
+ *  \ingroup rp_manager
  * Exactly like rp_manager_create, except that it is run without loading and
  * saving the state of the pipeline before and after the execution, and that no
  * flags are provided.
@@ -182,7 +182,7 @@ rp_manager *rp_manager_create_memory_only(const char *pipeline_path,
                                           const char *flags[]);
 
 /**
- *  @ingroup rp_manager
+ *  \ingroup rp_manager
  *  Triggers the serialization of the pipeline on disk.
  *  \return 0 if a error happened, 1 otherwise.
  *
@@ -191,13 +191,13 @@ rp_manager *rp_manager_create_memory_only(const char *pipeline_path,
 bool rp_manager_store_containers(rp_manager *manager);
 
 /**
- *  @ingroup rp_manager
+ *  \ingroup rp_manager
  * deletes the manager object and destroys all the resourced acquired by it.
  */
 void rp_manager_destroy(rp_manager *manager);
 
 /**
- *  @ingroup rp_manager
+ *  \ingroup rp_manager
  * \return the amount of steps present in the manager.
  *
  * \param manager cannot be null
@@ -207,7 +207,7 @@ uint64_t rp_manager_steps_count(rp_manager *manager);
 const inline uint64_t RP_STEP_NOT_FOUND = UINT64_MAX;
 
 /**
- *  @ingroup rp_manager
+ *  \ingroup rp_manager
  * \return the index of the step with the provided name.
  * returns RP_STEP_NOT_FOUND if no step with such name existed.
  *
@@ -216,7 +216,7 @@ const inline uint64_t RP_STEP_NOT_FOUND = UINT64_MAX;
 uint64_t rp_manager_step_name_to_index(rp_manager *runner, const char *name);
 
 /**
- *  @ingroup rp_manager
+ *  \ingroup rp_manager
  * \return the step with the provided index, or null if not such step existed.
  *
  * \param runner cannot be null
@@ -224,7 +224,7 @@ uint64_t rp_manager_step_name_to_index(rp_manager *runner, const char *name);
 rp_step *rp_manager_get_step(rp_manager *runner, uint64_t index);
 
 /**
- * @ingroup rp_step
+ * \ingroup rp_step
  * \return the step name
  *
  * \param step cannot be null
@@ -233,7 +233,7 @@ const char *rp_step_get_name(rp_step *step);
 
 /**
  *
- * @ingroup rp_step
+ * \ingroup rp_step
  * \return the container associated to the provided container identifier,
  *
  * \param step cannot be null
@@ -250,7 +250,7 @@ rp_container *rp_step_get_container_from_name(rp_step *step, const char *name);
 const char *rp_container_get_name(rp_container *container);
 
 /**
- * @ingroup rp_manager
+ * \ingroup rp_manager
  * \return the kind with the provided name, null if no kind
  * had the provided name.
  *
@@ -262,7 +262,7 @@ rp_manager_get_kind_from_name(rp_manager *runner, const char *kind_name);
 
 /**
  *
- * @ingroup rp_kind
+ * \ingroup rp_kind
  * \return the name of a kind
  *
  * \param kind cannot be null
@@ -270,7 +270,7 @@ rp_manager_get_kind_from_name(rp_manager *runner, const char *kind_name);
 const char *rp_kind_get_name(rp_kind *kind);
 
 /**
- * @ingroup rp_target
+ * \ingroup rp_target
  * creates a target from the provided info
  *
  * \param kind cannot be null
@@ -285,14 +285,14 @@ rp_target *rp_create_target(rp_kind *kind,
                             const char *path_components[]);
 
 /**
- * @ingroup rp_target
+ * \ingroup rp_target
  * Deletes the provided target.
  * \note Warning: this target must be one obtained from rp_create_target
  */
 void rp_destroy_target(rp_target *target);
 
 /**
- *  @ingroup rp_manager
+ *  \ingroup rp_manager
  * requests the production of the provided targets in a particular container
  *
  * \return 0 if an error was encountered, 1 otherwise
@@ -328,7 +328,7 @@ bool rp_container_store(rp_container *container, const char *path);
 bool rp_container_load(rp_container *container, const char *path);
 
 /**
- *  @ingroup rp_manager
+ *  \ingroup rp_manager
  * \return a table containing all the scalar available target that can
  * be requested to the manager
  *
@@ -337,7 +337,7 @@ bool rp_container_load(rp_container *container, const char *path);
 void rp_manager_recompute_all_available_targets(rp_manager *manager);
 
 /**
- *  @ingroup rp_manager
+ *  \ingroup rp_manager
  * \return the container status associated to the provided checkpoint
  * or null if no status is associated to the provided checkpoint
  *
@@ -347,13 +347,13 @@ rp_targets_list *rp_manager_get_container_targets_list(rp_manager *manager,
                                                        rp_container *container);
 
 /**
- * @ingroup rp_targets_list
+ * \ingroup rp_targets_list
  * \return the amount of target inside the provided container statuses
  */
 uint64_t rp_targets_list_targets_count(rp_targets_list *status);
 
 /**
- * @ingroup rp_targets_list
+ * \ingroup rp_targets_list
  *  \return the nth target inside the provided status or null if it's out of
  * bounds
  *
@@ -362,7 +362,7 @@ uint64_t rp_targets_list_targets_count(rp_targets_list *status);
 rp_target *rp_targets_list_get_target(rp_targets_list *status, uint64_t index);
 
 /**
- * @ingroup rp_target
+ * \ingroup rp_target
  * \return the kind of the provided target
  *
  * \param target cannot be null
@@ -370,7 +370,7 @@ rp_target *rp_targets_list_get_target(rp_targets_list *status, uint64_t index);
 rp_kind *rp_target_get_kind(rp_target *target);
 
 /**
- * @ingroup rp_target
+ * \ingroup rp_target
  *
  * Serializes target into a string, target cannot be null.
  *
@@ -379,14 +379,14 @@ char *rp_create_target_serialize(rp_target *target);
 
 /**
  *
- * @ingroup rp_target
+ * \ingroup rp_target
  * destroyes a serialized target
  *
  **/
 void rp_destroy_serialized_target(const char *serialized_target);
 
 /**
- * @ingroup rp_target
+ * \ingroup rp_target
  *
  * Deserialize a target from a string, arguments cannot be null.
  *
@@ -397,7 +397,7 @@ rp_target *
 rp_create_target_deserialize(rp_manager *manager, const char *serialized);
 
 /**
- * @ingroup rp_target
+ * \ingroup rp_target
  * \return 1 if target is requiring exactly a particular kind
  * \return 0 if target can accept derived from targets
  *
@@ -406,7 +406,7 @@ rp_create_target_deserialize(rp_manager *manager, const char *serialized);
 bool rp_target_is_exact(rp_target *target);
 
 /**
- * @ingroup rp_target
+ * \ingroup rp_target
  * \return the number of path component inside the target
  *
  * \param target cannot be null
@@ -414,7 +414,7 @@ bool rp_target_is_exact(rp_target *target);
 uint64_t rp_target_path_components_count(rp_target *target);
 
 /**
- * @ingroup rp_target
+ * \ingroup rp_target
  * \return the name of the nth path_component, or "*" if it represents all
  * possible targets. returns null if index is out of bound
  *
@@ -423,7 +423,7 @@ uint64_t rp_target_path_components_count(rp_target *target);
 const char *rp_target_get_path_component(rp_target *target, uint64_t index);
 
 /**
- *  @ingroup rp_manager
+ *  \ingroup rp_manager
  * \return the path of the provided container at the provided step
  */
 const char *rp_create_container_path(rp_manager *manager,
@@ -431,7 +431,7 @@ const char *rp_create_container_path(rp_manager *manager,
                                      const char *container_name);
 
 /**
- *  @ingroup rp_manager
+ *  \ingroup rp_manager
  * frees the string returned by rp_create_container_path
  */
 void rp_destroy_container_path(const char *container_path);
