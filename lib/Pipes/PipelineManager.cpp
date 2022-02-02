@@ -57,7 +57,7 @@ setUpContext(LLVMContextWrapper &Context, ModelGlobal &ModelWrapper) {
 }
 
 static llvm::Error
-pipelineRevngConfigurationCallback(const Loader &Loader, LLVMPipe &NewPass) {
+pipelineConfigurationCallback(const Loader &Loader, LLVMPipe &NewPass) {
   using Wrapper = ModelGlobal;
   auto &Context = Loader.getContext();
   auto MaybeModelWrapper = Context.getGlobal<Wrapper>(Wrapper::Name);
@@ -72,7 +72,7 @@ pipelineRevngConfigurationCallback(const Loader &Loader, LLVMPipe &NewPass) {
 static Loader setupLoader(pipeline::Context &PipelineContext,
                           llvm::ArrayRef<std::string> EnablingFlags) {
   Loader Loader(PipelineContext);
-  Loader.setLLVMPipeConfigurer(pipelineRevngConfigurationCallback);
+  Loader.setLLVMPipeConfigurer(pipelineConfigurationCallback);
   Loader.registerEnabledFlags(EnablingFlags);
   Registry::registerAllContainersAndPipes(Loader);
 
