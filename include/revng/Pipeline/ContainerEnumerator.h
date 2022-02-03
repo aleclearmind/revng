@@ -126,7 +126,7 @@ public:
 template<typename Container>
 class KindForContainer : public Kind, public ContainerEnumerator<Container> {
 public:
-  KindForContainer(llvm::StringRef Name, Granularity *Gran) :
+  KindForContainer(llvm::StringRef Name, Rank *Gran) :
     Kind(Name, Gran),
     ContainerEnumerator<Container>(*static_cast<Kind *>(this)) {}
 
@@ -134,7 +134,7 @@ public:
     Kind(Name, Parent, &Parent.granularity()),
     ContainerEnumerator<Container>(*static_cast<Kind *>(this)) {}
 
-  KindForContainer(llvm::StringRef Name, Kind &Parent, Granularity *Gran) :
+  KindForContainer(llvm::StringRef Name, Kind &Parent, Rank *Gran) :
     Kind(Name, Parent, Gran),
     ContainerEnumerator<Container>(*static_cast<Kind *>(this)) {}
 

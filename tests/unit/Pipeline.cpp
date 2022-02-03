@@ -55,8 +55,8 @@ using namespace std;
 using namespace llvm;
 using KE = Exactness::Values;
 
-static Granularity Root("Root");
-static Granularity FunctionGran("Function", Root);
+static Rank Root("Root");
+static Rank FunctionGran("Function", Root);
 class RootKindType : public LLVMKind {
 public:
   RootKindType() : LLVMKind("RootKind", &Root) { revng_assert(depth() == 0); };
@@ -181,7 +181,7 @@ static const Target ExampleTarget = { "name", RootKind };
 
 struct Fixture {
   Fixture() {
-    Granularity::init();
+    Rank::init();
     Kind::init();
   }
 };

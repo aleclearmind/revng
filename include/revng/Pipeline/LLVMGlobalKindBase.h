@@ -36,13 +36,13 @@ public:
   using StaticContainer = llvm::SmallVector<LLVMGlobalKindBase *, 4>;
 
 public:
-  LLVMGlobalKindBase(llvm::StringRef Name, Granularity *Gran) :
+  LLVMGlobalKindBase(llvm::StringRef Name, Rank *Gran) :
     KindForContainer<LLVMContainer>(Name, Gran) {}
 
   LLVMGlobalKindBase(llvm::StringRef Name, Kind &Parent) :
     KindForContainer<LLVMContainer>(Name, Parent) {}
 
-  LLVMGlobalKindBase(llvm::StringRef Name, Kind &Parent, Granularity *Gran) :
+  LLVMGlobalKindBase(llvm::StringRef Name, Kind &Parent, Rank *Gran) :
     KindForContainer<LLVMContainer>(Name, Parent, Gran) {}
   ~LLVMGlobalKindBase() override {}
 
