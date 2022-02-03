@@ -179,18 +179,6 @@ uint64_t rp_targets_list_targets_count(rp_targets_list *targets_list) {
   return targets_list->size();
 }
 
-rp_container *rp_step_get_container_from_name(rp_step *step, const char *name) {
-  revng_check(step != nullptr);
-  revng_check(name != nullptr);
-  if (not step->containers().containsOrCanCreate(name))
-    return nullptr;
-
-  // Causes the container to be materialized
-  step->containers()[name];
-
-  return &*step->containers().find(name);
-}
-
 rp_kind *
 rp_manager_get_kind_from_name(rp_manager *manager, const char *kind_name) {
   revng_check(manager != nullptr);

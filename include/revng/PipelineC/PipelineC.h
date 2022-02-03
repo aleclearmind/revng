@@ -381,14 +381,14 @@ const char *rp_kind_get_name(rp_kind *kind);
 const char *rp_container_get_name(rp_container *container);
 
 /**
- * Serialize \p container at the provided step in \p path.
+ * Serialize \p container in \p path.
  *
  * \return 0 if an error was encountered 1 otherwise.
  */
 bool rp_container_store(rp_container *container, const char *path);
 
 /**
- * Load the provided container at the provided step from the provided path.
+ * Load the provided container from the provided path.
  *
  * \return 0 if a error was encountered 1 otherwise
  *
