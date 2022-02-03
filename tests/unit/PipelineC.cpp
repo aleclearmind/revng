@@ -55,8 +55,6 @@ BOOST_AUTO_TEST_CASE(CAPILoadTest) {
   BOOST_TEST(rp_manager_step_name_to_index(runner, "End") == 1);
   BOOST_TEST(rp_manager_get_kind_from_name(runner, "MISSING") == nullptr);
   BOOST_TEST(rp_manager_get_kind_from_name(runner, "Root") != nullptr);
-  BOOST_TEST(rp_step_get_container_from_name(FirstStep, "Strings1"));
-  BOOST_TEST(rp_step_get_container_from_name(FirstStep, "Strings2"));
 }
 
 BOOST_AUTO_TEST_SUITE_END()
