@@ -354,8 +354,8 @@ const char *rp_container_get_name(rp_container *container) {
 
 const char *
 rp_container_identifier_get_name(rp_container_identifier *identifier) {
-  revng_check(container_identifier != nullptr);
-  return container_identifier->first().data();
+  revng_check(identifier != nullptr);
+  return identifier->first().data();
 }
 
 char *rp_target_create_serialized_string(rp_target *target) {
