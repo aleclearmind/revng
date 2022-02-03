@@ -26,7 +26,9 @@ private:
 public:
   static char ID;
 
-  FileContainer(pipeline::Kind &K, llvm::StringRef Name, llvm::StringRef Suffix);
+  FileContainer(pipeline::Kind &K,
+                llvm::StringRef Name,
+                llvm::StringRef Suffix);
   FileContainer(FileContainer &&);
   ~FileContainer() override;
   FileContainer(const FileContainer &);
@@ -65,8 +67,8 @@ private:
   }
 };
 
-inline pipeline::ContainerFactory makeFileContainerFactory(pipeline::Kind &K,
-                                                           const llvm::Twine &Suffix="") {
+inline pipeline::ContainerFactory
+makeFileContainerFactory(pipeline::Kind &K, const llvm::Twine &Suffix = "") {
   std::string SuffixString = Suffix.str();
   return [&K, SuffixString](llvm::StringRef Name) {
     return std::make_unique<FileContainer>(K, Name, SuffixString);

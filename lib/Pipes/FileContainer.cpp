@@ -22,7 +22,9 @@ namespace revng::pipes {
 
 char FileContainer::ID;
 
-FileContainer::FileContainer(Kind &K, llvm::StringRef Name, llvm::StringRef Suffix) :
+FileContainer::FileContainer(Kind &K,
+                             llvm::StringRef Name,
+                             llvm::StringRef Suffix) :
   Container<FileContainer>(Name), Path(), K(&K), Suffix(Suffix.str()) {
 }
 

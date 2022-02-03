@@ -96,7 +96,6 @@ void rp_string_destroy(char *string);
  * \{
  */
 
-// WIP: docs
 /**
  * Load and setup everything needed to run the pipeline, operating on the
  * provided directory and created from the provided pipelines_path.
@@ -203,10 +202,8 @@ bool rp_manager_produce_targets(rp_manager *manager,
                                 rp_step *step,
                                 rp_container *container);
 
-// WIP
 /**
- * \return a table containing all the scalar available target that can
- * be requested to the manager
+ *
  */
 void rp_manager_recompute_all_available_targets(rp_manager *manager);
 
@@ -280,9 +277,6 @@ const char *rp_step_get_name(rp_step *step);
  */
 rp_container *
 rp_step_get_container(rp_step *step, rp_container_identifier *identifier);
-
-// WIP: docs
-rp_container *rp_step_get_container_from_name(rp_step *step, const char *name);
 
 /** \} */
 

@@ -40,7 +40,8 @@ namespace revng::pipes {
 static RegisterLLVMPass<O2Pipe> P2;
 
 static RegisterContainerFactory F1("Binary", makeFileContainerFactory(Binary));
-static RegisterContainerFactory F2("Object", makeFileContainerFactory(Object, ".o"));
+static RegisterContainerFactory
+  F2("Object", makeFileContainerFactory(Object, ".o"));
 static RegisterContainerFactory
   F3("Translated", makeFileContainerFactory(Translated));
 

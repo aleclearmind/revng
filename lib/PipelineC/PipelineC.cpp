@@ -352,8 +352,8 @@ const char *rp_container_get_name(rp_container *container) {
   return container->second->name().data();
 }
 
-const char *rp_container_identifier_get_name(
-  rp_container_identifier *container_identifier) {
+const char *
+rp_container_identifier_get_name(rp_container_identifier *identifier) {
   revng_check(container_identifier != nullptr);
   return container_identifier->first().data();
 }
