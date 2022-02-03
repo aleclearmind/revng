@@ -120,8 +120,8 @@ static void runPipeline(Runner &Pipeline) {
   for (const auto &Target : Targets)
     AbortOnError(parseTarget(ToProduce, Target, Registry));
 
-  AbortOnError(
-    Pipeline.run(TargetStep, ToProduce, Silence ? nullptr : &dbgs()));
+  auto *Stream = Silence ? nullptr : &dbgs();
+  AbortOnError(Pipeline.run(TargetStep, ToProduce, Stream));
 }
 
 static auto makeManager() {
@@ -136,8 +136,7 @@ int main(int argc, const char *argv[]) {
 
   std::string Msg;
   for (const auto &Library : LoadLibraries) {
-    if (llvm::sys::DynamicLibrary::LoadLibraryPermanently(Library.c_str(),
-                                                          &Msg))
+    if (sys::DynamicLibrary::LoadLibraryPermanently(Library.c_str(), &Msg))
       AbortOnError(createStringError(inconvertibleErrorCode(), Msg));
   }
 
