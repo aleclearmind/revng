@@ -1,5 +1,5 @@
 /// \file Pipeline.cpp
-/// \brief Tests for Auto Pipe
+/// \brief Tests for revng-pipeline
 
 //
 // This file is distributed under the MIT License. See LICENSE.md for details.

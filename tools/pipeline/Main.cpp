@@ -26,7 +26,7 @@ using namespace llvm::cl;
 using namespace pipeline;
 using namespace revng::pipes;
 
-cl::OptionCategory PipelineCategory("Auto Pipe Options", "");
+cl::OptionCategory PipelineCategory("revng-pipeline options", "");
 
 static list<string>
   InputPipeline("P", desc("<Pipeline>"), cat(PipelineCategory));
