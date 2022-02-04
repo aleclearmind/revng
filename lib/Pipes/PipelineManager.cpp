@@ -286,18 +286,22 @@ PipelineManager::store(llvm::ArrayRef<std::string> StoresOverrides) {
   return llvm::Error::success();
 }
 
-llvm::Error PipelineManager::produceAllPossibleTargets() {
+llvm::Error
+PipelineManager::printAllPossibleTargets(llvm::raw_ostream &Stream) {
   recalculateAllPossibleTargets();
-  for (const auto &Step : CurrentState)
-    for (const auto &Container : Step.second)
+
+  for (const auto &Step : CurrentState) {
+    for (const auto &Container : Step.second) {
       for (const auto &Target : Container.second) {
         ContainerToTargetsMap ToProduce;
         ToProduce.add(Container.first(), Target);
-        llvm::dbgs() << Step.first() << "/" << Container.first() << "/";
-        Target.dump(llvm::dbgs());
-        if (auto Error = Runner->run(Step.first(), ToProduce, &llvm::dbgs());
-            Error)
+        Stream << Step.first() << "/" << Container.first() << "/";
+        Target.dump(Stream);
+        if (auto Error = Runner->run(Step.first(), ToProduce, &Stream); Error)
           return Error;
       }
+    }
+  }
+
   return llvm::Error::success();
 }

@@ -160,7 +160,7 @@ int main(int argc, const char *argv[]) {
     return EXIT_SUCCESS;
   }
   if (ProduceAllPossibleTargets)
-    AbortOnError(Manager.produceAllPossibleTargets());
+    AbortOnError(Manager.printAllPossibleTargets(llvm::dbgs()));
   else
     runPipeline(Manager.getRunner());
   AbortOnError(Manager.store(StoresOverrides));

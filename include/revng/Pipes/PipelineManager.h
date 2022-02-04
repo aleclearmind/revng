@@ -117,7 +117,7 @@ public:
 
   /// A helper function used to produce all possible targets. It is used for
   /// debug purposes to see if any particular target crashes.
-  llvm::Error produceAllPossibleTargets();
+  llvm::Error printAllPossibleTargets(llvm::raw_ostream &Stream);
 
   /// returns the cached list of targets that are known to be aviable to be
   /// produced in a container
