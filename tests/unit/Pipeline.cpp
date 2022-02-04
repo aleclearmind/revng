@@ -885,14 +885,14 @@ static const std::string PipelineTree(R"(---
                        )");
 
 static const std::string PipelineTree2(R"(---
-                       From:			FirstStep
+                       From:      FirstStep
                        Containers:
                        Steps:
                          - Name:            SecondStep
                        )");
 
 static const std::string PipelineTree3(R"(---
-                       From:			FirstStep
+                       From:      FirstStep
                        Containers:
                        Steps:
                          - Name:            ThirdStep
