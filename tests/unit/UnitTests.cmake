@@ -384,4 +384,3 @@ target_link_libraries(test_pipeline_c
   ${LLVM_LIBRARIES})
 add_test(NAME test_pipeline_c COMMAND ./bin/test_pipeline_c)
 set_tests_properties(test_pipeline_c PROPERTIES LABELS "unit")
-

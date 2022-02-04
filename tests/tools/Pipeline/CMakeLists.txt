@@ -2,56 +2,155 @@
 # This file is distributed under the MIT License. See LICENSE.md for details.
 #
 
-revng_add_library_internal(StringContainerLibrary SHARED ${CMAKE_CURRENT_LIST_DIR}/StringContainerLibrary.cpp)
-target_link_libraries(StringContainerLibrary revngPipeline revngPipes)
+# Define StringContainerLibrary
+revng_add_library_internal(StringContainerLibrary
+  SHARED
+  ${CMAKE_CURRENT_LIST_DIR}/StringContainerLibrary.cpp
+)
+target_link_libraries(StringContainerLibrary
+  revngPipeline
+  revngPipes
+)
 
-macro(add_auto_Pipe_test TestName PipelineFile Targets InputsList OutputList Flags)
-	add_test(NAME ${TestName} COMMAND ${CMAKE_CURRENT_BINARY_DIR}/bin/revng-pipeline -P ${CMAKE_CURRENT_LIST_DIR}/${PipelineFile} ${Targets} -i ${InputsList} -o ${OutputList} -l $<TARGET_FILE:StringContainerLibrary> -p ${CMAKE_CURRENT_BINARY_DIR}/${TestName} -f ${Flags})
+macro(add_pipeline_test
+  TEST_NAME
+  PIPELINE_FILE
+  TARGETS
+  INPUTS_LIST
+  OUTPUTS_LIST
+  FLAGS
+)
+  add_test(NAME "${TEST_NAME}"
+    COMMAND "${CMAKE_CURRENT_BINARY_DIR}/bin/revng-pipeline"
+      -P "${CMAKE_CURRENT_LIST_DIR}/${PIPELINE_FILE}"
+      ${TARGETS}
+      -i "${INPUTS_LIST}"
+      -o "${OUTPUTS_LIST}"
+      -l "$<TARGET_FILE:StringContainerLibrary>"
+      -p "${CMAKE_CURRENT_BINARY_DIR}/${TEST_NAME}"
+      -f "${FLAGS}"
+  )
+  set_tests_properties("${TEST_NAME}" PROPERTIES LABELS "pipeline;run")
 endmacro()
 
-macro(add_auto_Pipe_dump_test TestName PipelineFile)
-	add_test(NAME ${TestName} COMMAND ${CMAKE_CURRENT_BINARY_DIR}/bin/revng-pipeline -P ${CMAKE_CURRENT_LIST_DIR}/${PipelineFile} dc:dc:Root -l $<TARGET_FILE:StringContainerLibrary> -d)
+macro(add_pipeline_dump_test TEST_NAME PIPELINE_FILE)
+  add_test(NAME "${TEST_NAME}"
+    COMMAND "${CMAKE_CURRENT_BINARY_DIR}/bin/revng-pipeline"
+      -P "${CMAKE_CURRENT_LIST_DIR}/${PIPELINE_FILE}"
+      dc:dc:Root
+      -l "$<TARGET_FILE:StringContainerLibrary>"
+      -d
+  )
+  set_tests_properties("${TEST_NAME}" PROPERTIES LABELS "pipeline;dump")
 endmacro()
 
-macro(add_auto_Pipe_test_with_output TestName PipelineFile Targets InputsList OutputList Flags ToCheckFile ExpectedOutput)
+macro(test_pipeline_output
+  TEST_NAME
+  PIPELINE_FILE
+  TARGETS
+  INPUTS_LIST
+  OUTPUTS_LIST
+  FLAGS
+  FILE_TO_CHECK
+  EXPECTED_OUTPUT
+)
 
-	add_auto_Pipe_test(${TestName} ${PipelineFile} ${Targets} ${InputsList} ${OutputList} ${Flags})
-	add_test(NAME check-${TestName} COMMAND diff ${ToCheckFile} ${ExpectedOutput})
+  add_pipeline_test("${TEST_NAME}"
+    "${PIPELINE_FILE}"
+    "${TARGETS}"
+    "${INPUTS_LIST}"
+    "${OUTPUTS_LIST}"
+    "${FLAGS}"
+  )
+  add_test(NAME "${TEST_NAME}-check"
+    COMMAND diff -u "${FILE_TO_CHECK}" "${EXPECTED_OUTPUT}")
 
- set_tests_properties(check-${TestName} PROPERTIES DEPENDS ${TestName})
+  set_tests_properties("${TEST_NAME}-check"
+    PROPERTIES
+    DEPENDS "${TEST_NAME}"
+    LABELS "pipeline;check"
+  )
 endmacro()
 
-macro(add_auto_Pipe_failing_test TestName PipelineFile Targets InputsList OutputList Flags)
-
-	add_auto_Pipe_test(${TestName} ${PipelineFile} ${Targets} ${InputsList} ${OutputList} ${Flags} ${ExpectedOutput})
-    set_tests_properties(${TestName} PROPERTIES WILL_FAIL TRUE)
+macro(ensure_pipeline_failure
+  TEST_NAME
+  PIPELINE_FILE
+  TARGETS
+  INPUTS_LIST
+  OUTPUTS_LIST
+  FLAGS
+)
+  add_pipeline_test("${TEST_NAME}"
+    "${PIPELINE_FILE}"
+    "${TARGETS}"
+    "${INPUTS_LIST}"
+    "${OUTPUTS_LIST}"
+    "${FLAGS}"
+    "${EXPECTED_OUTPUT}"
+  )
+  set_tests_properties("${TEST_NAME}" PROPERTIES WILL_FAIL TRUE)
 endmacro()
 
+set(COPY_PIPE_TEST_INPUTS "FirstStep:Strings1:${CMAKE_CURRENT_LIST_DIR}/CopyPipeTestInput.txt")
+set(COPY_PIPE_TEST_OUTPUTS "End:Strings2:${CMAKE_CURRENT_BINARY_DIR}/CopyPipeTestOutput.txt")
 
-set(CopyPipeTestInputs "FirstStep:Strings1:${CMAKE_CURRENT_LIST_DIR}/CopyPipeTestInput.txt")
-set(CopyPipeTestOutputs "End:Strings2:${CMAKE_CURRENT_BINARY_DIR}/CopyPipeTestOutput.txt")
-add_auto_Pipe_test_with_output(copy-Pipe-run-test CopyPipeTestPipeline.yml Strings2:Root:Root ${CopyPipeTestInputs} ${CopyPipeTestOutputs} None CopyPipeTestOutput.txt ${CMAKE_CURRENT_LIST_DIR}/CopyPipeTestExpected.txt)
+test_pipeline_output(pipeline-copy-pipe
+  CopyPipeTestPipeline.yml
+  Strings2:Root:Root
+  "${COPY_PIPE_TEST_INPUTS}"
+  "${COPY_PIPE_TEST_OUTPUTS}"
+  None
+  CopyPipeTestOutput.txt
+  "${CMAKE_CURRENT_LIST_DIR}/CopyPipeTestExpected.txt"
+)
 
-add_auto_Pipe_test_with_output(flag-pipeline-test CopyPipeTestPipeline.yml Strings2:Root:Root ${CopyPipeTestInputs} ${CopyPipeTestOutputs} None CopyPipeTestOutput.txt ${CMAKE_CURRENT_LIST_DIR}/CopyPipeTestExpected.txt)
+# Try to produce a target produced by a non-disabled pipe
+test_pipeline_output(pipeline-copy-pipe-flag
+  CopyPipeFlagTestPipeline.yml
+  Strings2:Root:Root
+  "${COPY_PIPE_TEST_INPUTS}"
+  "${COPY_PIPE_TEST_OUTPUTS}"
+  None
+  CopyPipeTestOutput.txt
+  "${CMAKE_CURRENT_LIST_DIR}/CopyPipeTestExpected.txt"
+)
 
+# Try to produce a target produced by a disabled pipe
+ensure_pipeline_failure(pipeline-flag-fail-test
+  CopyPipeFlagTestPipeline.yml
+  Strings2:Root:Root
+  "${COPY_PIPE_TEST_INPUTS}"
+  "${COPY_PIPE_TEST_OUTPUTS}"
+  DisableCopyPipe
+)
 
-add_auto_Pipe_failing_test(flag-auto-Pipe-fail-test CopyPipeFlagTestPipeline.yml Strings2:Root:Root ${CopyPipeTestInputs} ${CopyPipeTestOutputs} EnablingFlags)
+# Try to invoke a non-existing pass using a PureLLVMPipe
+ensure_pipeline_failure(pipeline-test-missing-pipe
+  MissingPassPipelineTest.yml
+  Strings2:Root:Root
+  "${COPY_PIPE_TEST_INPUTS}"
+  "${COPY_PIPE_TEST_OUTPUTS}"
+  DontCare
+)
 
-add_auto_Pipe_failing_test(missing-pass-pipeline-fail-test MissingPassPipelineTest.yml Strings2:Root:Root ${CopyPipeTestInputs} ${CopyPipeTestOutputs} DontCare)
+# Test an LLVMPass pipe
+add_pipeline_dump_test(pipeline-llvm-pass-test PassPipelineTest.yml)
 
-add_auto_Pipe_dump_test(llvm-pass-test PassPipelineTest.yml)
+# Test running revng-pipeline in multiple invocation
+add_test(NAME pipeline-multistep-test
+  COMMAND
+    "${CMAKE_CURRENT_LIST_DIR}/MultiStepPipelineTest.sh"
+      --load $<TARGET_FILE:StringContainerLibrary>
+  WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+)
+set_tests_properties(pipeline-multistep-test
+  PROPERTIES
+  DEPENDS revng-pipeline
+  LABELS "pipeline"
+)
 
-add_test(NAME MultiStepPipelineTest
-	     COMMAND
-		   ${CMAKE_CURRENT_LIST_DIR}/MultiStepPipelineTest.sh
-		   ${CMAKE_CURRENT_LIST_DIR}/MultiStepPipeline.yml
-		   ${CMAKE_CURRENT_LIST_DIR}/MultiStepPipelineInput.txt
-		   ${CMAKE_CURRENT_BINARY_DIR}/MultiStepPipelineOut.txt
-		   ${CMAKE_CURRENT_BINARY_DIR}/MultiStepPipelineTestDir/
-		   -l $<TARGET_FILE:StringContainerLibrary>
-		   ${CMAKE_CURRENT_LIST_DIR}/MultiStepPipelineOutput.txt
-		   )
-set_tests_properties(MultiStepPipelineTest PROPERTIES DEPENDS revng-pipeline)
-
-revng_add_library_internal(FunctionCounter SHARED ${CMAKE_CURRENT_LIST_DIR}/ModelFunctionCounter.cpp)
+revng_add_library_internal(FunctionCounter
+  SHARED
+  ${CMAKE_CURRENT_LIST_DIR}/ModelFunctionCounter.cpp
+)
 target_link_libraries(FunctionCounter revngPipeline)
