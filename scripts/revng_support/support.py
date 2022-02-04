@@ -14,7 +14,12 @@ try:
 except ImportError:
     from backports.shutil_which import which
 
-def shlex_join(split_command): return ' '.join(shlex.quote(arg) for arg in split_command)
+
+log_commands = False
+
+
+def shlex_join(split_command):
+    return ' '.join(shlex.quote(arg) for arg in split_command)
 
 
 def log_error(msg):
@@ -24,10 +29,14 @@ def log_error(msg):
 def relative(path):
     return os.path.relpath(path, ".")
 
+
 def wrap(args, command_prefix):
     return command_prefix + args
 
-log_commands = None
+
+def set_verbose():
+    global log_commands
+    log_commands = True
 
 def run(command, command_prefix, override={}):
     if is_executable(command[0]):

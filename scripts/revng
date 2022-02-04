@@ -13,7 +13,7 @@ except ImportError:
     from backports.shutil_which import which
 
 from revng_translate import register_translate, run_translate
-from revng_support import *
+import revng_support
 
 search_prefixes = []
 real_argv0 = os.environ.get("REAL_ARGV0", sys.argv[0])
@@ -163,8 +163,8 @@ def main():
     search_prefixes = ((args.prefix or [])
                        + [os.path.join(script_path, "..")])
 
-    global log_commands
-    log_commands = args.verbose
+    if args.verbose:
+        revng_support.set_verbose()
 
     command_prefix = []
 
@@ -207,7 +207,7 @@ def run_subcommand(command, all_args, search_path, command_prefix):
     in_path = get_command(executable, search_path)
     if in_path:
         arguments = [os.path.abspath(in_path)] + all_args
-        run(arguments, command_prefix)
+        revng_support.run(arguments, command_prefix)
     else:
         log_error("\"revng-{}\" is not a valid command".format(command))
         return 1
@@ -225,7 +225,7 @@ def run_command(args, unknown_args, post_dash_dash, search_path, command_prefix)
 
     # First consider the hardcoded commands
     if command == "opt":
-        run(build_command_with_loads("opt", all_args + ["-serialize-model"], search_path), command_prefix)
+        revng_support.run(revng_support.build_command_with_loads("opt", all_args + ["-serialize-model"], search_path), command_prefix)
     elif command == "cc":
         return run_cc(all_args)
     elif command == "translate":

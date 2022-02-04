@@ -15,11 +15,6 @@ def register_translate(subparsers):
                         nargs=1,
                         help="Input binary to be translated")
 
-    parser.add_argument("--show-command",
-                        dest="show_command",
-                        action="store_true",
-                        help="show the pipeline command and exit")
-
     parser.add_argument("-o",
                         "--output",
                         metavar="OUTPUT",
@@ -27,12 +22,6 @@ def register_translate(subparsers):
                         type=str,
                         nargs="?",
                         help="Translated output")
-
-    parser.add_argument("-v",
-                        "--verbose",
-                        action='store_true',
-                        dest="verbose",
-                        help="verbose")
 
     parser.add_argument("-i",
                         "--isolate",
@@ -68,7 +57,8 @@ def run_translate(args, search_path, command_prefix):
     step_name = "EndRecompile"
     if args.isolate:
         step_name = step_name + "Isolated"
-    command = command + ["output:root:Translated",
+    command = command + ["--silent",
+                         "output:root:Translated",
                          "--step",
                          step_name,
                          "-i",
@@ -76,29 +66,20 @@ def run_translate(args, search_path, command_prefix):
                          "-o",
                          step_name + ":output:" + out_file]
 
-    if not args.verbose:
-        command.append("--silent")
-
     if args.O1:
         command.append("--compile-opt-level=1")
     elif args.O2:
-        command.append("--compile-opt-level=2")
-        command.append("-f")
-        command.append("O2")
+        command += ["--compile-opt-level=2", "-f",  "O2"]
     else:
         command.append("--compile-opt-level=0")
 
     if args.base:
-        command.append("--base={}".format(args.base))
+        command.append(f"--base={args.base}")
 
     if args.trace:
         command.append("--link-trace")
 
     to_execute = build_command_with_loads("revng-pipeline", command, search_path)
-
-    if args.show_command:
-        print(" ".join(to_execute))
-        return 0
 
     return run(to_execute, command_prefix)
 
