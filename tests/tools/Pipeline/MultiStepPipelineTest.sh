@@ -3,18 +3,37 @@
 set -e
 set -o pipefail
 
-if [ "$#" -ne 6  ]; then
-	echo "Illegal number of parameters" > /dev/stderr
-	exit
-fi
+SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 
-revng-pipeline -P=$1 Strings3:Root:Root -i FirstStep:Strings1:$2 -o End:Strings3:$3 -p $4 --load $5 -s
-diff $3 $6
-revng-pipeline -P=$1 Strings3:Root:Root -i FirstStep:Strings1:$2 -o End:Strings3:$3 -p $4 --load $5 -s
-diff $3 $6
-rm $4/SecondStep/Strings1
-revng-pipeline -P=$1 Strings3:Root:Root -i FirstStep:Strings1:$2 -o End:Strings3:$3 -p $4 --load $5 -s
-diff $3 $6
-rm $3
-revng-pipeline -P=$1 Strings3:Root:Root -i FirstStep:Strings1:$2 -o End:Strings3:$3 -p $4 --load $5 -s
-diff $3 $6
+OUTPUT="$PWD/MultiStepPipelineOut.txt"
+WORKING_DIRECTORY="$PWD/MultiStepPipelineTestDir/"
+REFERENCE_OUTPUT="$SCRIPT_DIR/MultiStepPipelineOutput.txt"
+
+function run() {
+  revng-pipeline \
+    -P="$SCRIPT_DIR/MultiStepPipeline.yml" \
+    Strings3:Root:Root \
+    -i "FirstStep:Strings1:$SCRIPT_DIR/MultiStepPipelineInput.txt" \
+    -o "End:Strings3:$OUTPUT" \
+    -p "$WORKING_DIRECTORY" \
+    -s \
+    "$@"
+}
+
+# Produce $OUTPUT
+run "$@"
+diff "$OUTPUT" "$REFERENCE_OUTPUT"
+
+# Produce $OUTPUT again and make sure it has not changed
+run "$@"
+diff "$OUTPUT" "$REFERENCE_OUTPUT"
+
+# Drop an interemdiate results and recompute
+rm "$WORKING_DIRECTORY/SecondStep/Strings1"
+run "$@"
+diff "$OUTPUT" "$REFERENCE_OUTPUT"
+
+# Recreate the output again
+rm "$OUTPUT"
+run "$@"
+diff "$OUTPUT" "$REFERENCE_OUTPUT"
