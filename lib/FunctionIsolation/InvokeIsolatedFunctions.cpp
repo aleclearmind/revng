@@ -27,7 +27,7 @@ static Register
   X("invoke-isolated-functions", "Invoke Isolated Functions Pass", true, true);
 
 struct InvokeIsolatedPipe {
-  static constexpr auto Name = "InvokeIsolated";
+  static constexpr auto Name = "invoke-isolated-functions";
 
   std::vector<pipeline::ContractGroup> getContract() const {
     using namespace revng::pipes;

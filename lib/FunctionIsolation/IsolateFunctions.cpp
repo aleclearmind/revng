@@ -53,7 +53,7 @@ char IF::ID = 0;
 static RegisterPass<IF> X("isolate", "Isolate Functions Pass", true, true);
 
 struct IsolatePipe {
-  static constexpr auto Name = "Isolate";
+  static constexpr auto Name = "isolate";
 
   std::vector<pipeline::ContractGroup> getContract() const {
     using namespace pipeline;

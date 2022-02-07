@@ -117,7 +117,7 @@ struct ExamplePass : public llvm::ModulePass {
 
 char ExamplePass::ID = '_';
 
-static llvm::RegisterPass<ExamplePass> X2("ExamplePass", "ExamplePass");
+static llvm::RegisterPass<ExamplePass> X2("example-pass", "ExamplePass");
 
 char StringContainer::ID;
 
