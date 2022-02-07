@@ -204,7 +204,7 @@ def run_subcommand(command, all_args, search_path, command_prefix):
         log_error("Can't find the following command: {}".format(executable))
         return 1
 
-    in_path = get_command(executable, search_path)
+    in_path = revng_support.get_command(executable, search_path)
     if in_path:
         arguments = [os.path.abspath(in_path)] + all_args
         revng_support.run(arguments, command_prefix)
