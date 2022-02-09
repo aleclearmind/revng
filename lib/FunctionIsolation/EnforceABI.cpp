@@ -93,6 +93,8 @@ bool EnforceABI::runOnModule(Module &M) {
   return false;
 }
 
+// TODO: this needs to become stricter, every function type needs to be
+//       described in terms of registers, not matter what.
 static std::optional<model::RawFunctionType>
 makeRawPrototypeOrDefault(const model::Type *Type, model::Binary &TheBinary) {
   const auto *Raw = llvm::dyn_cast<model::RawFunctionType>(Type);
@@ -100,8 +102,7 @@ makeRawPrototypeOrDefault(const model::Type *Type, model::Binary &TheBinary) {
     return *Raw;
 
   const auto *CABI = llvm::dyn_cast<model::CABIFunctionType>(Type);
-  if (CABI == nullptr)
-    return std::nullopt;
+  revng_assert(CABI != nullptr);
 
   auto Converted = model::convertToRawFunctionType(*CABI, TheBinary);
   if (Converted != std::nullopt)
