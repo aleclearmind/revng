@@ -18,7 +18,7 @@ target_link_libraries(revngLift
   dl
   m
   revngBasicAnalyses
-  revngDwarfImporter
+  revngModelImporterDwarf
   revngFunctionCallIdentification
   revngModel
   revngSupport

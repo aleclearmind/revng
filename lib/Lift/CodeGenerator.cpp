@@ -37,7 +37,6 @@
 #include "llvm/Transforms/Utils/BasicBlockUtils.h"
 #include "llvm/Transforms/Utils/Cloning.h"
 
-#include "revng/DwarfImporter/DwarfImporter.h"
 #include "revng/EarlyFunctionAnalysis/ABI.h"
 #include "revng/FunctionCallIdentification/FunctionCallIdentification.h"
 #include "revng/FunctionCallIdentification/PruneRetSuccessors.h"
@@ -47,6 +46,7 @@
 #include "revng/Lift/JumpTargetManager.h"
 #include "revng/Lift/PTCInterface.h"
 #include "revng/Lift/VariableManager.h"
+#include "revng/Model/Importer/Dwarf/DwarfImporter.h"
 #include "revng/Model/SerializeModelPass.h"
 #include "revng/Support/CommandLine.h"
 #include "revng/Support/Debug.h"
