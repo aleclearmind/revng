@@ -36,7 +36,7 @@ public:
   const llvm::DataLayout &getDataLayout() const { return DL; }
 
   MaterializedValue load(llvm::Constant *Address) {
-    return JTM.readFromPointer(Address, E);
+    return JTM.readFromPointer(Address, IsLittleEndian);
   }
 };
 
