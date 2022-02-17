@@ -15,7 +15,8 @@ using namespace llvm;
 
 void importBinary(TupleTree<model::Binary> &Model,
                   const llvm::object::ObjectFile &TheBinary) {
-  Model->Architecture = model::Architecture::fromLLVMArchitecture(TheBinary.getArch());
+  Model->Architecture = model::Architecture::fromLLVMArchitecture(
+    TheBinary.getArch());
 
   // WIP
   uint64_t PreferedBaseAddress = 0;

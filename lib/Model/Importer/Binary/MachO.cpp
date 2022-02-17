@@ -8,12 +8,12 @@
 #include "llvm/Object/MachO.h"
 #include "llvm/Object/ObjectFile.h"
 
-#include "revng/Support/Debug.h"
 #include "revng/Model/Binary.h"
+#include "revng/Support/Debug.h"
 
 // WIP
-#include "MyFile.h"
 #include "Importers.h"
+#include "MyFile.h"
 
 using namespace llvm;
 
@@ -57,8 +57,9 @@ public:
   }
 };
 
-static MetaAddress
-getInitialPC(model::Architecture::Values Arch, bool Swap, ArrayRef<uint8_t> Command) {
+static MetaAddress getInitialPC(model::Architecture::Values Arch,
+                                bool Swap,
+                                ArrayRef<uint8_t> Command) {
   using namespace llvm::MachO;
 
   ArrayRefReader<uint8_t> Reader(Command, Swap);
@@ -143,7 +144,8 @@ getInitialPC(model::Architecture::Values Arch, bool Swap, ArrayRef<uint8_t> Comm
   revng_check(Reader.eof());
 
   if (PC)
-    return MetaAddress::fromPC(model::Architecture::toLLVMArchitecture(Arch), *PC);
+    return MetaAddress::fromPC(model::Architecture::toLLVMArchitecture(Arch),
+                               *PC);
   else
     return MetaAddress::invalid();
 }
@@ -158,10 +160,11 @@ private:
 public:
   MachOImporter(TupleTree<model::Binary> &Model,
                 const object::ObjectFile &TheBinary,
-                uint64_t PreferedBaseAddress) : File(*Model, {}),
-                                                Model(Model),
-                                                TheBinary(TheBinary),
-                                                PreferedBaseAddress(PreferedBaseAddress) {}
+                uint64_t PreferedBaseAddress) :
+    File(*Model, {}),
+    Model(Model),
+    TheBinary(TheBinary),
+    PreferedBaseAddress(PreferedBaseAddress) {}
 
   void import() {
     (void) File;
@@ -176,9 +179,10 @@ public:
     using LoadCommandInfo = MachOObjectFile::LoadCommandInfo;
 
     auto &MachO = cast<object::MachOObjectFile>(TheBinary);
-    
+
     revng_assert(Model->Architecture != model::Architecture::Invalid);
-    bool IsLittleEndian = model::Architecture::isLittleEndian(Model->Architecture);
+    bool IsLittleEndian = model::Architecture::isLittleEndian(
+      Model->Architecture);
     StringRef StringDataRef = TheBinary.getData();
     auto RawDataRef = ArrayRef<uint8_t>(StringDataRef.bytes_begin(),
                                         StringDataRef.size());
@@ -208,7 +212,9 @@ public:
         revng_check(contains(RawDataRef, CommandBuffer));
 #endif
 
-        Model->EntryPoint = getInitialPC(Model->Architecture, MustSwap, CommandBuffer);
+        Model->EntryPoint = getInitialPC(Model->Architecture,
+                                         MustSwap,
+                                         CommandBuffer);
       } break;
 
       case LC_MAIN:
@@ -252,9 +258,7 @@ public:
   }
 
   template<typename T>
-  void parseMachOSegment(ArrayRef<uint8_t> RawDataRef,
-                         const T &SegmentCommand);
-  
+  void parseMachOSegment(ArrayRef<uint8_t> RawDataRef, const T &SegmentCommand);
 };
 
 template<typename T>

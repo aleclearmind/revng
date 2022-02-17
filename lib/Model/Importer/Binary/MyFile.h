@@ -24,13 +24,16 @@ public:
   }
 
   MetaAddress fromPC(uint64_t PC) const {
-    return MetaAddress::fromPC(model::Architecture::toLLVMArchitecture(Architecture), PC);
+    return MetaAddress::fromPC(model::Architecture::toLLVMArchitecture(
+                                 Architecture),
+                               PC);
   }
 
   MetaAddress fromGeneric(uint64_t Address) const {
-    return MetaAddress::fromGeneric(model::Architecture::toLLVMArchitecture(Architecture), Address);
+    return MetaAddress::fromGeneric(model::Architecture::toLLVMArchitecture(
+                                      Architecture),
+                                    Address);
   }
-
 };
 
 inline uint64_t u64(uint64_t Value) {
@@ -58,12 +61,12 @@ private:
   llvm::ArrayRef<uint8_t> Data;
 
 public:
-  MyFile(const model::Binary &Binary,
-         llvm::ArrayRef<uint8_t> Data) : Binary(Binary), Data(Data) {}
+  MyFile(const model::Binary &Binary, llvm::ArrayRef<uint8_t> Data) :
+    Binary(Binary), Data(Data) {}
 
 public:
   uint64_t size() { return Data.size(); }
-  
+
   llvm::ArrayRef<uint8_t> getByOffset(uint64_t Offset, uint64_t Size) const {
     using namespace nooverflow;
     auto MaybeSum = add(Offset, Size);
@@ -72,8 +75,8 @@ public:
     return Data.slice(Offset, Size);
   }
 
-  llvm::ArrayRef<uint8_t> getByAddress(MetaAddress Address,
-                                       uint64_t Size) const {
+  llvm::ArrayRef<uint8_t>
+  getByAddress(MetaAddress Address, uint64_t Size) const {
     auto MaybeOffset = addressToOffset(Address);
     if (not MaybeOffset)
       return {};
@@ -89,27 +92,25 @@ public:
     // WIP: overflow
     // WIP: within bounds?
     auto StartOffset = Segment->StartOffset + OffsetInSegment;
-    return Data.slice(StartOffset,
-                      Segment->EndOffset - StartOffset);
+    return Data.slice(StartOffset, Segment->EndOffset - StartOffset);
   }
 
   /// \note This function ignores the underlying data, it just performs address
   ///       translation.
-  std::optional<uint64_t> addressToOffset(MetaAddress Address,
-                                          uint64_t Size=0) const {
+  std::optional<uint64_t>
+  addressToOffset(MetaAddress Address, uint64_t Size = 0) const {
     auto [Segment, OffsetInSegment] = findOffsetInSegment(Address, Size);
     if (Segment == nullptr) {
       return {};
     } else {
       // WIP: overflow
       return Segment->StartOffset + OffsetInSegment;
-    }        
+    }
   }
 
 private:
   std::pair<const model::Segment *, uint64_t>
-  findOffsetInSegment(MetaAddress Address,
-                      uint64_t Size) const {
+  findOffsetInSegment(MetaAddress Address, uint64_t Size) const {
     const model::Segment *Match = nullptr;
     for (const model::Segment &Segment : Binary.Segments) {
       if (Segment.contains(Address, Size)) {
@@ -120,7 +121,6 @@ private:
         }
 
         Match = &Segment;
-        
       }
     }
 
@@ -132,7 +132,5 @@ private:
       // No match
       return { nullptr, 0 };
     }
-
   }
-
 };

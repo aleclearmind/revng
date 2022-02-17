@@ -9,7 +9,7 @@ namespace llvm {
 namespace object {
 class ObjectFile;
 }
-}
+} // namespace llvm
 
 void importELF(TupleTree<model::Binary> &Model,
                const llvm::object::ObjectFile &TheBinary,

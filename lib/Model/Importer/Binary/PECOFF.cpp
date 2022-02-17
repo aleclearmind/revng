@@ -5,15 +5,15 @@
 // This file is distributed under the MIT License. See LICENSE.md for details.
 //
 
-#include "llvm/Object/ObjectFile.h"
 #include "llvm/Object/COFF.h"
+#include "llvm/Object/ObjectFile.h"
 
-#include "revng/Support/Debug.h"
 #include "revng/Model/Binary.h"
+#include "revng/Support/Debug.h"
 
 // WIP
-#include "MyFile.h"
 #include "Importers.h"
+#include "MyFile.h"
 
 using namespace llvm;
 
@@ -27,10 +27,11 @@ private:
 public:
   PECOFF(TupleTree<model::Binary> &Model,
          const object::ObjectFile &TheBinary,
-         uint64_t PreferedBaseAddress) : File(*Model, {}),
-                                         Model(Model),
-                                         TheBinary(TheBinary),
-                                         PreferedBaseAddress(PreferedBaseAddress) {}
+         uint64_t PreferedBaseAddress) :
+    File(*Model, {}),
+    Model(Model),
+    TheBinary(TheBinary),
+    PreferedBaseAddress(PreferedBaseAddress) {}
 
   void import() {
     // WIP
@@ -51,7 +52,6 @@ public:
 #endif
     // TODO handle relocations
     parseCOFF();
-
   }
 
   void parseCOFF();

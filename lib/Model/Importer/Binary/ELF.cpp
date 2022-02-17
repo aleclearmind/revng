@@ -7,17 +7,16 @@
 
 #include <optional>
 
+#include "llvm/ADT/DenseMap.h"
 #include "llvm/Object/ELF.h"
 #include "llvm/Object/ObjectFile.h"
-#include "llvm/ADT/DenseMap.h"
-
-#include "revng/Support/Debug.h"
 
 #include "revng/Model/Binary.h"
+#include "revng/Support/Debug.h"
 
 // WIP
-#include "MyFile.h"
 #include "Importers.h"
+#include "MyFile.h"
 
 using namespace llvm;
 
@@ -102,8 +101,7 @@ public:
                        Data.size() / TypeSize);
   }
 
-  ArrayRef<uint8_t>
-  extractData() const {
+  ArrayRef<uint8_t> extractData() const {
     revng_assert(HasAddress);
 
     if (HasSize) {
@@ -275,10 +273,14 @@ public:
   // WIP: drop PreferedBaseAddress
   ELFImporter(TupleTree<model::Binary> &Model,
               const object::ObjectFile &TheBinary,
-              uint64_t PreferedBaseAddress) : File(*Model, makeArrayRef<uint8_t>(reinterpret_cast<const uint8_t *>(TheBinary.getData().data()), TheBinary.getData().size())),
-                                              Model(Model),
-                                              TheBinary(TheBinary),
-                                              PreferedBaseAddress(PreferedBaseAddress) {}
+              uint64_t PreferedBaseAddress) :
+    File(*Model,
+         makeArrayRef<uint8_t>(reinterpret_cast<const uint8_t *>(
+                                 TheBinary.getData().data()),
+                               TheBinary.getData().size())),
+    Model(Model),
+    TheBinary(TheBinary),
+    PreferedBaseAddress(PreferedBaseAddress) {}
 
 private:
   template<typename T, bool Addend>
@@ -302,7 +304,8 @@ private:
 
   template<typename T>
   MetaAddress getCodePointer(Pointer Ptr) const {
-    return getGenericPointer<T>(Ptr).toPC(model::Architecture::toLLVMArchitecture(Model->Architecture));
+    return getGenericPointer<T>(Ptr).toPC(
+      model::Architecture::toLLVMArchitecture(Model->Architecture));
   }
 
   /// \brief Parse the .eh_frame_hdr section to obtain the address and the
@@ -326,7 +329,7 @@ private:
   void parseEHFrame(MetaAddress EHFrameAddress,
                     Optional<uint64_t> FDEsCount,
                     Optional<uint64_t> EHFrameSize);
-  
+
   /// \brief Parse an LSDA to collect its landing pads
   ///
   /// \param FDEStart the start address of the FDE to which this LSDA is
@@ -334,7 +337,7 @@ private:
   /// \param LSDAAddress the address of the target LSDA
   template<typename T>
   void parseLSDA(MetaAddress FDEStart, MetaAddress LSDAAddress);
-    
+
   /// \brief Register a label for each input relocation
   template<typename T, bool HasAddend>
   void registerRelocations(Elf_Rel_Array<T, HasAddend> Relocations,
@@ -444,7 +447,7 @@ inline void ELFImporter::import() {
         if (It == Model->Functions.end())
           Model->Functions[Address].Type = model::FunctionType::Invalid;
       }
-        
+
 #if 0
       registerLabel(Label::createSymbol(LabelOrigin::StaticSymbol,
                                         Address,
@@ -571,7 +574,8 @@ inline void ELFImporter::import() {
   if (EHFrameHdrAddress) {
     MetaAddress Address = MetaAddress::invalid();
 
-    std::tie(Address, FDEsCount) = this->ehFrameFromEhFrameHdr<T>(*EHFrameHdrAddress);
+    std::tie(Address,
+             FDEsCount) = this->ehFrameFromEhFrameHdr<T>(*EHFrameHdrAddress);
     if (EHFrameAddress) {
       revng_assert(*EHFrameAddress == Address);
     }
@@ -831,7 +835,8 @@ ELFImporter::ehFrameFromEhFrameHdr(MetaAddress EHFrameHdrAddress) {
   revng_assert(not isNull(EHFrameHdr),
                ".eh_frame_hdr section not available in any segment");
 
-  DwarfReader<T> EHFrameHdrReader(model::Architecture::toLLVMArchitecture(Architecture),
+  DwarfReader<T> EHFrameHdrReader(model::Architecture::toLLVMArchitecture(
+                                    Architecture),
                                   EHFrameHdr,
                                   EHFrameHdrAddress);
 
@@ -855,8 +860,8 @@ ELFImporter::ehFrameFromEhFrameHdr(MetaAddress EHFrameHdrAddress) {
 
 template<typename T>
 void ELFImporter::parseEHFrame(MetaAddress EHFrameAddress,
-                         Optional<uint64_t> FDEsCount,
-                         Optional<uint64_t> EHFrameSize) {
+                               Optional<uint64_t> FDEsCount,
+                               Optional<uint64_t> EHFrameSize) {
   revng_assert(FDEsCount || EHFrameSize);
 
   // Sometimes the .eh_frame section is present but not mapped in memory. This
@@ -866,7 +871,8 @@ void ELFImporter::parseEHFrame(MetaAddress EHFrameAddress,
   if (isNull(EHFrame))
     return;
 
-  auto Architecture = model::Architecture::toLLVMArchitecture(Model->Architecture);
+  auto Architecture = model::Architecture::toLLVMArchitecture(
+    Model->Architecture);
 
   DwarfReader<T> EHFrameReader(Architecture, EHFrame, EHFrameAddress);
 
@@ -1035,7 +1041,8 @@ void ELFImporter::parseLSDA(MetaAddress FDEStart, MetaAddress LSDAAddress) {
   llvm::ArrayRef<uint8_t> LSDA = File.getFromAddressOn(LSDAAddress);
   revng_assert(not isNull(LSDA), "LSDA not available in any segment");
 
-  auto Architecture = model::Architecture::toLLVMArchitecture(Model->Architecture);
+  auto Architecture = model::Architecture::toLLVMArchitecture(
+    Model->Architecture);
   DwarfReader<T> LSDAReader(Architecture, LSDA, LSDAAddress);
 
   uint32_t LandingPadBaseEncoding = LSDAReader.readNextU8();
@@ -1079,9 +1086,7 @@ void ELFImporter::parseLSDA(MetaAddress FDEStart, MetaAddress LSDAAddress) {
 
       ExtraCodeAddresses.insert(LandingPad);
     }
-
   }
-
 }
 
 template<typename T, bool HasAddend>
@@ -1103,8 +1108,8 @@ struct RelocationHelper<T, false> {
 
 template<typename T, bool HasAddend>
 void ELFImporter::registerRelocations(Elf_Rel_Array<T, HasAddend> Relocations,
-                                const FilePortion &Dynsym,
-                                const FilePortion &Dynstr) {
+                                      const FilePortion &Dynsym,
+                                      const FilePortion &Dynstr) {
   using Elf_Rel = llvm::object::Elf_Rel_Impl<T, HasAddend>;
   using Elf_Sym = llvm::object::Elf_Sym_Impl<T>;
 
@@ -1135,16 +1140,18 @@ void ELFImporter::registerRelocations(Elf_Rel_Array<T, HasAddend> Relocations,
       SymbolType = Symbol.getType();
     }
 
-    auto RelocationType = model::RelocationType::fromELFRelocation(Model->Architecture, Type);
+    auto RelocationType = model::RelocationType::
+      fromELFRelocation(Model->Architecture, Type);
     // WIP: handle RelocationType == model::RelocationType::Invalid
     model::Relocation NewRelocation(Address, RelocationType, Addend);
-    
+
     if (SymbolName.size() != 0) {
       if (SymbolType == SymbolType::Code) {
         auto It = Model->ImportedDynamicFunctions.find(SymbolName.str());
         if (It != Model->ImportedDynamicFunctions.end()) {
           auto &Relocations = It->Relocations;
-          auto RelocationType = model::RelocationType::fromELFRelocation(Model->Architecture, Type);
+          auto RelocationType = model::RelocationType::
+            fromELFRelocation(Model->Architecture, Type);
           // WIP: handle RelocationType == model::RelocationType::Invalid
           Relocations.insert(NewRelocation);
         }
@@ -1159,7 +1166,6 @@ void ELFImporter::registerRelocations(Elf_Rel_Array<T, HasAddend> Relocations,
       } else {
         // WIP: warning
       }
-      
     }
 
 #if 0
@@ -1178,9 +1184,11 @@ void importELF(TupleTree<model::Binary> &Model,
                uint64_t PreferedBaseAddress) {
   ELFImporter X(Model, TheBinary, PreferedBaseAddress);
 
-  bool IsLittleEndian = model::Architecture::isLittleEndian(Model->Architecture);
+  bool IsLittleEndian = model::Architecture::isLittleEndian(
+    Model->Architecture);
   size_t PointerSize = model::Architecture::getPointerSize(Model->Architecture);
-  bool HasRelocationAddend = model::Architecture::hasELFRelocationAddend(Model->Architecture);
+  bool HasRelocationAddend = model::Architecture::hasELFRelocationAddend(
+    Model->Architecture);
 
   if (PointerSize == 4) {
     if (IsLittleEndian) {
