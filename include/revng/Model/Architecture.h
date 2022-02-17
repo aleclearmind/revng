@@ -23,6 +23,22 @@ TUPLE-TREE-YAML */
 
 namespace model::Architecture {
 
+inline bool isLittleEndian(Values V) {
+  switch (V) {
+  case model::Architecture::x86:
+  case model::Architecture::x86_64:
+  case model::Architecture::arm:
+  case model::Architecture::aarch64:
+  case model::Architecture::mipsel:
+    return true;
+  case model::Architecture::mips:
+  case model::Architecture::systemz:
+    return false;
+  default:
+    revng_abort();
+  }
+}
+
 inline Values fromLLVMArchitecture(llvm::Triple::ArchType A) {
   switch (A) {
   case llvm::Triple::x86:
