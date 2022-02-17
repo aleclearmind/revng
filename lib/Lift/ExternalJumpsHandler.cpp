@@ -47,12 +47,14 @@ BasicBlock *ExternalJumpsHandler::createReturnFromExternal() {
   Constant *SavedRegistersPtr = TheModule.getGlobalVariable("saved_registers");
   LoadInst *SavedRegisters = Builder.CreateLoad(SavedRegistersPtr);
 
+  // WIP: uhm...
   Value *GEP = Builder.CreateGEP(SavedRegisters,
                                  Builder.getInt32(Arch.pcMContextIndex()));
   LoadInst *PCAddress = Builder.CreateLoad(GEP);
   PCH->deserializePCFromSignalContext(Builder, PCAddress, SavedRegisters);
 
   // Deserialize the ABI registers
+  // WIP: uhm...
   for (const ABIRegister &Register : Arch.abiRegisters()) {
     GlobalVariable *CSV = TheModule.getGlobalVariable(Register.csvName());
     // Not all the registers have a corresponding CSV
@@ -99,6 +101,7 @@ ExternalJumpsHandler::ExternalJumpsHandler(BinaryFile &TheBinary,
   TheModule(*TheFunction.getParent()),
   TheFunction(TheFunction),
   TheBinary(TheBinary),
+  // WIP: use Model->Architecture
   Arch(TheBinary.architecture()),
   Dispatcher(Dispatcher),
   PCH(PCH) {
@@ -191,6 +194,7 @@ void ExternalJumpsHandler::buildExecutableSegmentsList() {
   IntegerType *Int64 = Builder.getInt64Ty();
   SmallVector<Constant *, 10> ExecutableSegments;
   auto Int = [Int64](uint64_t V) { return ConstantInt::get(Int64, V); };
+  // WIP: use the model
   for (auto &Segment : TheBinary.segments()) {
     if (Segment.IsExecutable) {
       ExecutableSegments.push_back(Int(Segment.StartVirtualAddress.address()));

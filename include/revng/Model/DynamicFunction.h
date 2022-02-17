@@ -26,6 +26,7 @@ fields:
     reference:
       pointeeType: model::Type
       rootType: model::Binary
+    optional: true
   - name: Attributes
     doc: Function attributes
     sequence:

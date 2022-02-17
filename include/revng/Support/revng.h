@@ -240,6 +240,7 @@ inline Values fromName(llvm::StringRef Name) {
 
 } // namespace KillReason
 
+// WIP: drop
 class RelocationDescription {
 public:
   enum RelocationType { Invalid, BaseRelative, LabelOnly, SymbolRelative };

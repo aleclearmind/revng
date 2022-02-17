@@ -69,6 +69,8 @@ fields:
       elementType: MetaAddress
 TUPLE-TREE-YAML */
 
+// WIP: add CanonicalValues: <model::Register, <MetaAddress Address, bool Relocated>>
+
 #include "revng/Model/Generated/Early/Binary.h"
 
 // TODO: Prevent changing the keys. Currently we need them to be public and

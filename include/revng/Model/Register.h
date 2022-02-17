@@ -347,4 +347,99 @@ getInvalidValueFromYAMLScalar<model::Register::Values>() {
   return model::Register::Invalid;
 }
 
+namespace model::Architecture {
+
+constexpr inline model::Register::Values getStackPointer(Values V) {
+  using namespace model::Register;
+
+  switch (V) {
+  case x86:
+    return esp_x86;
+
+  case x86_64:
+    return rsp_x86_64;
+
+  case arm:
+    return r13_arm;
+
+  case mips:
+    return sp_mips;
+
+  case mipsel:
+    // WIP
+    return sp_mips;
+
+  case aarch64:
+    return sp_aarch64;
+
+  case systemz:
+    return r15_systemz;
+
+  default:
+    revng_abort();
+  }
+}
+
+constexpr inline model::Register::Values getSyscallNumberRegister(Values V) {
+  using namespace model::Register;
+
+  switch (V) {
+  case x86:
+    return eax_x86;
+
+  case x86_64:
+    return rax_x86_64;
+
+  case arm:
+    return r7_arm;
+
+  case mips:
+    return v0_mips;
+
+  case mipsel:
+    // WIP
+    return v0_mips;
+
+  case aarch64:
+    return x8_aarch64;
+
+  case systemz:
+    return r1_systemz;
+
+  default:
+    revng_abort();
+  }
+}
+
+constexpr inline model::Register::Values getReturnAddressRegister(Values V) {
+  using namespace model::Register;
+
+  switch (V) {
+  case x86:
+  case x86_64:
+    return model::Register::Invalid;
+
+  case arm:
+    return r14_arm;
+
+  case mips:
+    return ra_mips;
+
+  case mipsel:
+    // WIP
+    return ra_mips;
+
+  case aarch64:
+    return lr_aarch64;
+
+  case systemz:
+    return r14_systemz;
+
+  default:
+    revng_abort();
+  }
+}
+
+} // namespace model::Architecture
+
 #include "revng/Model/Generated/Late/Register.h"

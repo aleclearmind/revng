@@ -7,11 +7,15 @@
 #include "llvm/ADT/Triple.h"
 
 #include "revng/ADT/KeyedObjectTraits.h"
+#include "revng/Model/Architecture.h"
 #include "revng/Support/Debug.h"
 
 extern "C" {
 #include "revng/Runtime/PlainMetaAddress.h"
 }
+
+// WIP: check overflows
+// WIP: purge llvm::Triple
 
 namespace llvm {
 class Type;

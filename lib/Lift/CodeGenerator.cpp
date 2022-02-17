@@ -192,7 +192,8 @@ CodeGenerator::CodeGenerator(BinaryFile &Binary,
   ElfHeaderHelper->setSection(".elfheaderhelper");
 
   auto *RegisterType = Type::getIntNTy(Context,
-                                       Binary.architecture().pointerSize());
+                                       model::Architecture::getPointerSize(
+                                         Model->Architecture));
   auto CreateConstGlobal = [this, &RegisterType](const Twine &Name,
                                                  uint64_t Value) {
     return new GlobalVariable(*this->TheModule,
@@ -205,11 +206,13 @@ CodeGenerator::CodeGenerator(BinaryFile &Binary,
 
   // These values will be used to populate the auxiliary vectors
   if (Binary.programHeadersAddress().isValid()) {
+    // WIP: make these external definitions and populate them in later linking phases
     CreateConstGlobal("e_phentsize", Binary.programHeaderSize());
     CreateConstGlobal("e_phnum", Binary.programHeadersCount());
     CreateConstGlobal("phdr_address", Binary.programHeadersAddress().address());
   }
 
+  // WIP: use Model->Segments
   for (SegmentInfo &Segment : Binary.segments()) {
     // If it's executable register it as a valid code area
     if (Segment.IsExecutable) {
@@ -240,6 +243,7 @@ CodeGenerator::CodeGenerator(BinaryFile &Binary,
         revng_check(Segment.EndVirtualAddress.address() != 0);
         NoMoreCodeBoundaries.insert(Segment.EndVirtualAddress);
         const auto &Architecture = Binary.architecture();
+        // WIP: use model::Architecture::getBasicBlockEndingPattern
         auto BasicBlockEndingPattern = Architecture.basicBlockEndingPattern();
         ptc.mmap(End.address(),
                  BasicBlockEndingPattern.data(),
@@ -773,6 +777,7 @@ void CodeGenerator::translate(Optional<uint64_t> RawVirtualAddress) {
   //
   // Create well-known CSVs
   //
+  // WIP: use model::Architecture::getStackPointerRegister
   const Architecture &Arch = Binary.architecture();
   std::string SPName = Arch.stackPointerRegister().str();
   GlobalVariable *SPReg = Variables.getByEnvOffset(ptc.sp, SPName).first;
@@ -832,6 +837,7 @@ void CodeGenerator::translate(Optional<uint64_t> RawVirtualAddress) {
   // Create revng.input named metadata
   //
 
+  // WIP: drop
   const char *MDName = "revng.input.canonical-values";
   NamedMDNode *CanonicalValuesMD;
   CanonicalValuesMD = TheModule->getOrInsertNamedMetadata(MDName);
@@ -894,6 +900,7 @@ void CodeGenerator::translate(Optional<uint64_t> RawVirtualAddress) {
     VirtualAddress = JumpTargets.fromPC(*RawVirtualAddress);
   } else {
     JumpTargets.harvestGlobalData();
+    // WIP: use Model->EntryPoint
     VirtualAddress = Binary.entryPoint();
     revng_assert(VirtualAddress.isCode());
   }
@@ -920,6 +927,7 @@ void CodeGenerator::translate(Optional<uint64_t> RawVirtualAddress) {
 
   std::vector<BasicBlock *> Blocks;
 
+  // WIP: use Model->Architecture
   InstructionTranslator Translator(Builder,
                                    Variables,
                                    JumpTargets,

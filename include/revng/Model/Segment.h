@@ -4,11 +4,14 @@
 // This file is distributed under the MIT License. See LICENSE.md for details.
 //
 
+#include "revng/ADT/SortedVector.h"
 #include "revng/Model/Identifier.h"
+#include "revng/Model/Section.h"
 #include "revng/Model/VerifyHelper.h"
 #include "revng/Support/MetaAddress.h"
 #include "revng/Support/MetaAddress/YAMLTraits.h"
 
+// WIP: s/EndAddress/Size/
 /* TUPLE-TREE-YAML
 name: Segment
 type: struct
@@ -27,9 +30,20 @@ fields:
     type: bool
   - name: IsExecutable
     type: bool
-  - name: CustomName
-    type: Identifier
+  - name: Name
+    type: std::string
     optional: true
+  - name: Relocations
+    optional: true
+    sequence:
+      type: SortedVector
+      elementType: model::Relocation
+  - name: Sections
+    optional: true
+    sequence:
+      type: SortedVector
+      elementType: model::Section
+
 key:
   - StartAddress
   - EndAddress
@@ -43,6 +57,17 @@ public:
 
 public:
   Identifier name() const;
+
+public:
+  bool contains(MetaAddress Address) const {
+    return (StartAddress.addressLowerThanOrEqual(Address)
+            and Address.addressLowerThan(EndAddress));
+  }
+
+  bool contains(MetaAddress Start, uint64_t Size) const {
+    // WIP: check for overflow
+    return contains(Start) and (Size <= 1 or contains(Start + Size - 1));
+  }
 
 public:
   bool verify() const debug_function;

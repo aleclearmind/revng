@@ -402,6 +402,7 @@ JumpTargetManager::readFromPointer(Constant *Pointer, bool IsLittleEndian) {
     if (Match != nullptr) {
       switch (Match->type()) {
       case LabelType::AbsoluteValue:
+        // WIP: drop
         return { NewAPInt(Match->value()) };
 
       case LabelType::BaseRelativeValue:
@@ -452,6 +453,7 @@ JumpTargetManager::JumpTargetManager(Function *TheFunction,
 
   prepareDispatcher();
 
+  // WIP: use model::Binary::Segments
   for (auto &Segment : Binary.segments())
     Segment.insertExecutableRanges(std::back_inserter(ExecutableRanges));
 
@@ -464,6 +466,7 @@ JumpTargetManager::JumpTargetManager(Function *TheFunction,
 }
 
 void JumpTargetManager::harvestGlobalData() {
+  // WIP: use model::Binary::ExtraCodeAddresses
   // Register symbols
   for (const Label &L : Binary.labels())
     if (L.isSymbol() and L.isCode())
@@ -477,6 +480,7 @@ void JumpTargetManager::harvestGlobalData() {
   for (MetaAddress CodePointer : Binary.codePointers())
     registerJT(CodePointer, JTReason::GlobalData);
 
+  // WIP: use LoadBinaryPass
   for (auto &Segment : Binary.segments()) {
     const Constant *Initializer = Segment.Variable->getInitializer();
     if (isa<ConstantAggregateZero>(Initializer))
@@ -1604,6 +1608,7 @@ void JumpTargetManager::harvestWithAVI() {
   // branches
   //
 
+  // WIP: model::Architecture::...
   StringRef SyscallHelperName = Binary.architecture().syscallHelper();
   Function *SyscallHelper = M->getFunction(SyscallHelperName);
   StringRef SyscallIDCSVName = Binary.architecture().syscallNumberRegister();
