@@ -60,6 +60,27 @@ inline Values fromLLVMArchitecture(llvm::Triple::ArchType A) {
   }
 }
 
+inline llvm::Triple::ArchType toLLVMArchitecture(Values V) {
+  switch (V) {
+  case model::Architecture::x86:
+    return llvm::Triple::x86;
+  case model::Architecture::x86_64:
+    return llvm::Triple::x86_64;
+  case model::Architecture::arm:
+    return llvm::Triple::arm;
+  case model::Architecture::aarch64:
+    return llvm::Triple::aarch64;
+  case model::Architecture::mips:
+    return llvm::Triple::mips;
+  case model::Architecture::mipsel:
+    return llvm::Triple::mipsel;
+  case model::Architecture::systemz:
+    return llvm::Triple::systemz;
+  default:
+    revng_abort();
+  }
+}
+
 /// Return the size of the pointer in bytes
 constexpr inline size_t getPointerSize(Values V) {
   switch (V) {
