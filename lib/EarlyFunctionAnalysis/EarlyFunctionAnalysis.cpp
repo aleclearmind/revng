@@ -355,7 +355,6 @@ private:
   llvm::LLVMContext &Context;
   GeneratedCodeBasicInfo *GCBI;
   ArrayRef<GlobalVariable *> ABICSVs;
-  BasicBlockQueue *EntrypointsQueue;
   FunctionAnalysisResults &Oracle;
   const TupleTree<model::Binary> &Binary;
   /// PreHookMarker and PostHookMarker mark the presence of an original
@@ -375,12 +374,13 @@ private:
   OpaqueFunctionsPool<llvm::Type *> OpaqueBranchConditionsPool;
   const llvm::CodeExtractorAnalysisCache CEAC;
   const ProgramCounterHandler *PCH;
+  BasicBlockQueue EntrypointsQueue;
 
 public:
   FunctionEntrypointAnalyzer(llvm::Module &,
                              GeneratedCodeBasicInfo *GCBI,
                              ArrayRef<GlobalVariable *>,
-                             BasicBlockQueue *,
+                             std::set<BasicBlockNode *> &,
                              FunctionAnalysisResults &,
                              const TupleTree<model::Binary> &);
 
@@ -442,14 +442,13 @@ using FEA = FunctionEntrypointAnalyzer;
 FEA::FunctionEntrypointAnalyzer(llvm::Module &M,
                                 GeneratedCodeBasicInfo *GCBI,
                                 ArrayRef<GlobalVariable *> ABICSVs,
-                                BasicBlockQueue *EntrypointsQueue,
+                                std::set<BasicBlockNode *> &Entrypoints,
                                 FunctionAnalysisResults &Oracle,
                                 const TupleTree<model::Binary> &Binary) :
   M(M),
   Context(M.getContext()),
   GCBI(GCBI),
   ABICSVs(ABICSVs),
-  EntrypointsQueue(EntrypointsQueue),
   Oracle(Oracle),
   Binary(Binary),
   // Initialize hook markers for subsequent ABI analyses on function calls
@@ -497,6 +496,10 @@ FEA::FunctionEntrypointAnalyzer(llvm::Module &M,
                                                       llvm::sys::fs::OF_Append);
     revng_assert(!EC);
   }
+
+  // Push ownership of `Entrypoints` into the local queue
+  for (auto *EP : Entrypoints)
+    EntrypointsQueue.insert(EP);
 }
 
 void FunctionEntrypointAnalyzer::serializeFunctionMetadata() {
@@ -1878,8 +1881,8 @@ FunctionEntrypointAnalyzer::outlineFunction(llvm::BasicBlock *Entry) {
 }
 
 void FunctionEntrypointAnalyzer::runInterproceduralAnalysis() {
-  while (!EntrypointsQueue->empty()) {
-    BasicBlockNode *EntryNode = EntrypointsQueue->pop();
+  while (!EntrypointsQueue.empty()) {
+    BasicBlockNode *EntryNode = EntrypointsQueue.pop();
     revng_log(EarlyFunctionAnalysisLog,
               "Analyzing Entry: " << EntryNode->BB->getName());
 
@@ -1903,7 +1906,7 @@ void FunctionEntrypointAnalyzer::runInterproceduralAnalysis() {
             break;
 
           if (!Oracle.isFakeFunction(getBasicBlockPC(Caller->BB)))
-            EntrypointsQueue->insert(Caller);
+            EntrypointsQueue.insert(Caller);
           else
             FakeFunctionWorklist.insert(Caller);
         }
@@ -1978,9 +1981,9 @@ bool EarlyFunctionAnalysis<ShouldAnalyzeABI>::runOnModule(Module &M) {
   for (const auto &[_, Node] : BasicBlockNodeMap)
     RootNode->addSuccessor(Node);
 
-  // Create an over-approximated call graph of the program. A queue of all the
+  // Create an over-approximated call graph of the program. A set of all the
   // function entrypoints is maintained.
-  BasicBlockQueue EntrypointsQueue;
+  std::set<BasicBlockNode *> Entrypoints;
   for (auto *Node : llvm::post_order(&CG)) {
     if (Node == RootNode)
       continue;
@@ -1989,7 +1992,7 @@ bool EarlyFunctionAnalysis<ShouldAnalyzeABI>::runOnModule(Module &M) {
     // which have `Invalid` as type.
     auto &Function = Binary->Functions.at(getBasicBlockPC(Node->BB));
     if (Function.Type == model::FunctionType::Invalid)
-      EntrypointsQueue.insert(Node);
+      Entrypoints.insert(Node);
   }
 
   // Dump the call-graph, if requested
@@ -2034,7 +2037,7 @@ bool EarlyFunctionAnalysis<ShouldAnalyzeABI>::runOnModule(Module &M) {
   FAR Properties(std::move(DefaultSummary));
 
   // Instantiate a FunctionEntrypointAnalyzer object
-  FEA Analyzer(M, &GCBI, ABICSVs, &EntrypointsQueue, Properties, Binary);
+  FEA Analyzer(M, &GCBI, ABICSVs, Entrypoints, Properties, Binary);
 
   // Prepopulate the cache with functions from model and recreate fake functions
   Analyzer.importModel();
