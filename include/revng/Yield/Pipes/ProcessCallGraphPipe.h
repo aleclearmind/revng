@@ -19,7 +19,9 @@ namespace revng::pipes {
 
 class ProcessCallGraph {
 public:
-  static constexpr const auto Name = "ProcessCallGraph";
+  static constexpr auto Name = "ProcessCallGraph";
+  static constexpr auto Doc = "Produce a YAML document containing cross "
+                              "relation information.";
 
 public:
   std::array<pipeline::ContractGroup, 1> getContract() const;

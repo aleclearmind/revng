@@ -17,7 +17,9 @@ namespace revng::pipes {
 
 class YieldControlFlow {
 public:
-  static constexpr const auto Name = "YieldCFG";
+  static constexpr auto Name = "YieldCFG";
+  static constexpr auto Doc = "Produce an SVG of the control flow, where each "
+                              "node contains the disassembled code.";
 
 public:
   std::array<pipeline::ContractGroup, 1> getContract() const;

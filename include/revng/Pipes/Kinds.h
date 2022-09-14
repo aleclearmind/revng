@@ -12,30 +12,78 @@
 
 namespace revng::kinds {
 
-inline pipeline::Kind Binary("Binary", &ranks::Binary);
+// WIP: which containers?
 
-inline RootKind Root("Root", &ranks::Binary);
-inline IsolatedRootKind IsolatedRoot("IsolatedRoot", Root);
+inline pipeline::Kind Binary("Binary",
+                             "A kind to representing the binary as a whole.",
+                             &ranks::Binary);
 
-inline TaggedFunctionKind
-  Isolated("Isolated", &ranks::Function, FunctionTags::Isolated);
-inline TaggedFunctionKind
-  ABIEnforced("ABIEnforced", &ranks::Function, FunctionTags::ABIEnforced);
-inline TaggedFunctionKind
-  CSVsPromoted("CSVsPromoted", &ranks::Function, FunctionTags::CSVsPromoted);
+inline RootKind
+  Root("Root", "The `root` function in the LLVM module.", &ranks::Binary);
+inline IsolatedRootKind IsolatedRoot("IsolatedRoot",
+                                     "The `root` function in the LLVM module "
+                                     "in a version calling isolated functions "
+                                     "(see the `Isolated` kind).",
+                                     Root);
 
-inline pipeline::Kind Object("Object", &ranks::Binary);
-inline pipeline::Kind Translated("Translated", &ranks::Binary);
+inline TaggedFunctionKind Isolated("Isolated",
+                                   "A function in the LLVM module representing "
+                                   "an individual function in the binary. In "
+                                   "this state, the function has no arguments, "
+                                   "return values and still accesses the CPU "
+                                   "state through the CSVs.",
+                                   &ranks::Function,
+                                   FunctionTags::Isolated);
+inline TaggedFunctionKind ABIEnforced("ABIEnforced",
+                                      "A function in the LLVM module "
+                                      "representing an individual function in "
+                                      "the binary. In this state, the function "
+                                      "has arguments and return values "
+                                      "according to the the `Prototype` of the "
+                                      "corresponding `Function` in the model. "
+                                      "The function still accesses the CPU "
+                                      "state through the CSVs.",
+                                      &ranks::Function,
+                                      FunctionTags::ABIEnforced);
+inline TaggedFunctionKind CSVsPromoted("CSVsPromoted",
+                                       "Similar to the `ABIEnforced` kind, but "
+                                       "the function no longer accesses the "
+                                       "CSVs, they are promoted to local "
+                                       "variables. These variables are "
+                                       "initialized from arguments, if "
+                                       "necessary.",
+                                       &ranks::Function,
+                                       FunctionTags::CSVsPromoted);
 
-inline FunctionKind
-  FunctionAssemblyInternal("FunctionAssemblyInternal", &ranks::Function);
-inline FunctionKind
-  FunctionAssemblyPTML("FunctionAssemblyPTML", &ranks::Function);
-inline FunctionKind
-  FunctionControlFlowGraphSVG("FunctionControlFlowGraphSVG", &ranks::Function);
+inline pipeline::Kind Object("Object",
+                             "A kind for the object file obtained by compiling "
+                             "the LLVM module containing the `root` function.",
+                             &ranks::Binary);
+inline pipeline::Kind Translated("Translated",
+                                 "A kind for the result of the translation "
+                                 "process, representing the whole translated "
+                                 "executable.",
+                                 &ranks::Binary);
 
-inline pipeline::Kind
-  BinaryCrossRelations("BinaryCrossRelations", &ranks::Binary);
+inline FunctionKind FunctionAssemblyInternal("FunctionAssemblyInternal",
+                                             "A kind representing an internal "
+                                             "representation of a disassembled "
+                                             "function.",
+                                             &ranks::Function);
+inline FunctionKind FunctionAssemblyPTML("FunctionAssemblyPTML",
+                                         "A kind representing the disassembly "
+                                         "of a function in PTML form.",
+                                         &ranks::Function);
+inline FunctionKind FunctionControlFlowGraphSVG("FunctionControlFlowGraphSVG",
+                                                "A kind representing the SVG "
+                                                "image of the control-flow "
+                                                "graph of a function.",
+                                                &ranks::Function);
+
+inline pipeline::Kind BinaryCrossRelations("BinaryCrossRelations",
+                                           "A kind representing the "
+                                           "cross-relations of a binary.",
+                                           &ranks::Binary);
 
 inline constexpr auto BinaryCrossRelationsRole = "CrossRelations";
 

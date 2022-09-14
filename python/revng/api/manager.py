@@ -68,7 +68,6 @@ class Manager:
         return _api.rp_manager_save_context(self._manager, _dest_dir)
 
     # Kind-related Functions
-
     @property
     def kinds_count(self) -> int:
         return _api.rp_manager_kinds_count(self._manager)
@@ -77,6 +76,7 @@ class Manager:
         _kind = _api.rp_manager_get_kind(self._manager, idx)
         return Kind(_kind) if _kind != ffi.NULL else None
 
+    # WIP: @property
     def kinds(self) -> Generator[Kind, None, None]:
         return make_generator(self.kinds_count, self._get_kind_from_index)
 
@@ -437,6 +437,7 @@ class Manager:
         _name = _api.rp_manager_get_global_name(self._manager, idx)
         return make_python_string(_name)
 
+    # WIP: drop _list
     def globals_list(self) -> Generator[str, None, None]:
         return make_generator(self.globals_count(), self._get_global_from_index)
 

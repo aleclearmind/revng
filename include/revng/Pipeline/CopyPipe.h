@@ -14,6 +14,8 @@ template<typename Source, typename Destination = Source>
 class CopyPipe {
 public:
   static constexpr auto Name = "CopyPipe";
+  static constexpr auto Doc = "Copy input container to the output container as "
+                              "is.";
 
 private:
   Kind *K;

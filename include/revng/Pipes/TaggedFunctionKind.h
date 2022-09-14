@@ -23,15 +23,17 @@ private:
 
 public:
   TaggedFunctionKind(llvm::StringRef Name,
+                     llvm::StringRef Doc,
                      pipeline::Rank *Rank,
                      const FunctionTags::Tag &Tag) :
-    pipeline::LLVMKind(Name, Rank), Tag(&Tag) {}
+    pipeline::LLVMKind(Name, Doc, Rank), Tag(&Tag) {}
 
   TaggedFunctionKind(llvm::StringRef Name,
+                     llvm::StringRef Doc,
                      TaggedFunctionKind &Parent,
                      pipeline::Rank *Rank,
                      const FunctionTags::Tag &Tag) :
-    pipeline::LLVMKind(Name, Parent, Rank), Tag(&Tag) {}
+    pipeline::LLVMKind(Name, Doc, Parent, Rank), Tag(&Tag) {}
 
   pipeline::TargetsList
   compactTargets(const pipeline::Context &Ctx,

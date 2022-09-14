@@ -19,7 +19,14 @@ namespace revng::pipes {
 
 class ProcessAssembly {
 public:
-  static constexpr const auto Name = "ProcessAssembly";
+  static constexpr auto Name = "ProcessAssembly";
+  static constexpr auto Doc = "Produce an intermediate YAML document "
+                              "containing the disassembly of the desired "
+                              "functions. This intermediate format is suitable "
+                              "for further processing such as emitting the "
+                              "disassembly in text form or the control-flow "
+                              "graph where each node contains the disassembled "
+                              "code.";
 
 public:
   std::array<pipeline::ContractGroup, 1> getContract() const;

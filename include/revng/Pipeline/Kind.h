@@ -35,17 +35,24 @@ class DeadKind;
 /// LLVMKind instead.
 class Kind : public DynamicHierarchy<Kind> {
 private:
+  std::string Doc;
   RegisterKind Register;
   const Rank *TheRank;
 
 public:
-  Kind(llvm::StringRef Name, const Rank *TheRank) :
-    DynamicHierarchy<Kind>(Name), Register(*this), TheRank(TheRank) {
+  Kind(llvm::StringRef Name, llvm::StringRef Doc, const Rank *TheRank) :
+    DynamicHierarchy<Kind>(Name), Doc(Doc), Register(*this), TheRank(TheRank) {
     revng_assert(TheRank != nullptr);
   }
 
-  Kind(llvm::StringRef Name, Kind &Parent, const Rank *TheRank) :
-    DynamicHierarchy<Kind>(Name, Parent), Register(*this), TheRank(TheRank) {
+  Kind(llvm::StringRef Name,
+       llvm::StringRef Doc,
+       Kind &Parent,
+       const Rank *TheRank) :
+    DynamicHierarchy<Kind>(Name, Parent),
+    Doc(Doc),
+    Register(*this),
+    TheRank(TheRank) {
     revng_assert(TheRank != nullptr);
   }
 
@@ -59,6 +66,8 @@ public:
   size_t depth() const { return TheRank->depth(); }
 
   const Rank &rank() const { return *TheRank; }
+
+  llvm::StringRef doc() const { return Doc; }
 
 public:
   virtual ~Kind() = default;
@@ -85,7 +94,8 @@ public:
 class DeadKind : public Kind {
 
 public:
-  DeadKind(Rank *R) : Kind("Dead", R) {}
+  DeadKind(Rank *R) :
+    Kind("Dead", ("Terminating kind for rank " + R->name()).str(), R) {}
 
   void expandTarget(const Context &Ctx,
                     const Target &Input,
