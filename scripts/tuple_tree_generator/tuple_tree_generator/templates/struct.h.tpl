@@ -50,7 +50,7 @@ public:
 
   /*# --- Default constructor --- #*/
   /// Default constructor
-  /*= struct.name =*/() :
+  /*= struct.name =*/() /**- if struct.inherits or struct.fields **/:/** endif **/
     /**- if struct.inherits **//*= struct.inherits.name =*/()/** endif **/
     /**- for field in struct.fields **/
     /**- if not loop.first or struct.inherits **/, /** endif **/The/*= field.name =*/()

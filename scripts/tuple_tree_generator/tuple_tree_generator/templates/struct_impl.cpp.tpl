@@ -18,9 +18,7 @@ The notice below applies to the generated files.
 
 /** if upcastable **/
 
-using Key = /*= struct | user_fullname =*/::Key;
-
-Key KeyedObjectTraits<UpcastablePointer</*= struct | user_fullname =*/>>::key(
+/*= struct | user_fullname =*/::Key KeyedObjectTraits<UpcastablePointer</*= struct | user_fullname =*/>>::key(
   const UpcastablePointer</*= struct | user_fullname =*/> &Obj)
 {
 
@@ -33,7 +31,7 @@ Key KeyedObjectTraits<UpcastablePointer</*= struct | user_fullname =*/>>::key(
 
 UpcastablePointer</*= struct | user_fullname =*/>
 KeyedObjectTraits<UpcastablePointer</*= struct | user_fullname =*/>>::fromKey(
-  const Key &K)
+  const /*= struct | user_fullname =*/::Key &K)
 {
   using namespace model;
   using ResultType = UpcastablePointer</*= struct | user_fullname =*/>;
