@@ -11,6 +11,9 @@ type: struct
 fields:
   - name: Kind
     type: Type2Kind
+  - name: IsConst
+    type: bool
+    optional: true
 key: [Kind]
 abstract: true
 TUPLE-TREE-YAML */
