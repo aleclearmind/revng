@@ -17,6 +17,7 @@ revng_add_library_internal(
   MetaAddress.cpp
   OriginalAssemblyAnnotationWriter.cpp
   PathList.cpp
+  Progress.cpp
   ProgramCounterHandler.cpp
   ResourceFinder.cpp
   SelfReferencingDbgAnnotationWriter.cpp
