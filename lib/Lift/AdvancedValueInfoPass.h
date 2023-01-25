@@ -123,6 +123,17 @@ AdvancedValueInfoPass::run(llvm::Function &F,
         revng_assert(isa<PHINode>(V) or V != &I);
 #endif
 
+  unsigned Count = 0;
+  for (User *U : Marker->users()) {
+    auto *Call = dyn_cast<CallInst>(U);
+    if (Call == nullptr or skipCasts(Call->getCalledOperand()) != Marker
+        or Call->getParent()->getParent() != &F)
+      continue;
+    ++Count;
+  }
+
+  Task T(Count, "Advanced Value Info");
+
   for (User *U : Marker->users()) {
     auto *Call = dyn_cast<CallInst>(U);
     if (Call == nullptr or skipCasts(Call->getCalledOperand()) != Marker
@@ -131,6 +142,8 @@ AdvancedValueInfoPass::run(llvm::Function &F,
 
     revng_assert(Call->getNumArgOperands() >= 1);
     Value *ToTrack = Call->getArgOperand(0);
+
+    T.advance(getName(ToTrack), true);
 
     AVIPassLogger << "Tracking " << ToTrack << ":";
 

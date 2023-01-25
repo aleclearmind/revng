@@ -28,6 +28,7 @@
 #include "llvm/IR/PassManager.h"
 #include "llvm/IR/Verifier.h"
 #include "llvm/Passes/PassBuilder.h"
+#include "llvm/Support/Progress.h"
 #include "llvm/Transforms/InstCombine/InstCombine.h"
 #include "llvm/Transforms/Scalar.h"
 #include "llvm/Transforms/Scalar/EarlyCSE.h"
@@ -1889,10 +1890,11 @@ void JumpTargetManager::harvestWithAVI() {
 // translate we proceed as long as we are able to create new edges on the CFG
 // (not considering the dispatcher).
 void JumpTargetManager::harvest() {
-
+  Task T(10, "Harvesting");
   HarvestingStats.push("harvest 0");
 
   if (empty()) {
+    T.advance("Simple literals");
     HarvestingStats.push("harvest 1: SimpleLiterals");
     revng_log(JTCountLog, "Collecting simple literals");
     for (MetaAddress PC : SimpleLiterals)
@@ -1901,6 +1903,7 @@ void JumpTargetManager::harvest() {
   }
 
   if (empty()) {
+    T.advance("SROA + InstCombine + TBDP");
     HarvestingStats.push("harvest 2: SROA + InstCombine + TBDP");
 
     // Safely erase all unreachable blocks
@@ -1948,6 +1951,7 @@ void JumpTargetManager::harvest() {
     PreliminaryBranchesPM.run(TheModule);
 
     if (empty()) {
+      T.advance("Advanced Value Info");
       HarvestingStats.push("harvest 3: harvestWithAVI");
       revng_log(JTCountLog, "Harvesting with Advanced Value Info");
       harvestWithAVI();
