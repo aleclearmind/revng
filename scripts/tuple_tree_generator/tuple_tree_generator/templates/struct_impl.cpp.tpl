@@ -82,7 +82,7 @@ bool /*= struct | fullname =*/::localCompare(const /*= struct | user_fullname =*
   /**- if field.__class__.__name__ == "SimpleStructField" **/
 
   /**- if schema.get_definition_for(field.type).__class__.__name__ == "StructDefinition" -**/
-  if (not this->/*= field.name =*/().localCompare(Other./*= field.name =*/()))
+  if (not ::localCompare(this->/*= field.name =*/(), Other./*= field.name =*/()))
     return false;
   /**- else -**/
   if (this->/*= field.name =*/() != Other./*= field.name =*/())

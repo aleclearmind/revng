@@ -99,6 +99,9 @@ definitions:
         type: string
       doc:
         type: string
+      upcastable:
+        type: boolean
+        default: false
       optional:
         type: boolean
         default: false

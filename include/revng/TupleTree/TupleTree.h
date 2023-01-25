@@ -29,6 +29,24 @@
 #include "revng/TupleTree/TupleTreeReference.h"
 #include "revng/TupleTree/Visits.h"
 
+template<UpcastablePointerLike T>
+bool localCompare(const T &Left, const T &Right) {
+  bool LeftIsNull = Left.get() == nullptr;
+  bool RightIsNull = Right.get() == nullptr;
+
+  if (LeftIsNull != RightIsNull)
+    return false;
+  else if (LeftIsNull or RightIsNull)
+    return true;
+  else
+    return Left->localCompare(*Right);
+}
+
+template<typename T>
+bool localCompare(const T &Left, const T &Right) {
+  return Left.localCompare(Right);
+}
+
 template<TupleTreeCompatible T>
 class TupleTree {
 private:

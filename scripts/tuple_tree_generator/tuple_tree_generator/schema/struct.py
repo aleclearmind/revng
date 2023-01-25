@@ -71,15 +71,19 @@ class SimpleStructField(StructField):
         name,
         type,  # noqa: A002
         doc=None,
+        upcastable=False,
         optional=False,
         const=False,
         is_guid=False,
     ):
         super().__init__(name=name, doc=doc, optional=optional, const=const, is_guid=is_guid)
         self.type = type
+        self.upcastable = upcastable
 
     def resolve_references(self, schema):
         self.resolved_type = schema.get_definition_for(self.type)
+        if self.upcastable:
+            self.resolved_type = UpcastableDefinition(self.resolved_type)
         assert self.resolved_type
 
 

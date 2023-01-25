@@ -88,6 +88,10 @@ fields:
     sequence:
       type: SortedVector
       elementType: MetaAddress
+  - name: temp
+    upcastable: true
+    type: Type2
+    optional: true
 TUPLE-TREE-YAML */
 
 #include "revng/Model/Generated/Early/Binary.h"
