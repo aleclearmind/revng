@@ -1739,8 +1739,7 @@ void JumpTargetManager::harvestWithAVI() {
     FPM.run(*OptimizedFunction, FAM);
   }
 
-  if (VerifyLog.isEnabled())
-    revng_check(not verifyModule(*OptimizedFunction->getParent(), &dbgs()));
+  revng::verify(OptimizedFunction->getParent());
 
   //
   // Collect the results
@@ -1901,8 +1900,7 @@ void JumpTargetManager::harvest() {
       }
     }
 
-    if (VerifyLog.isEnabled())
-      revng_assert(not verifyModule(TheModule, &dbgs()));
+    revng::verify(&TheModule);
 
     revng_log(JTCountLog, "Preliminary harvesting");
 
