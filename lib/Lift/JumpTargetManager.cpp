@@ -1431,14 +1431,9 @@ void JumpTargetManager::harvestWithAVI() {
   // Collect all the non-PC affecting CSVs
   //
   std::set<GlobalVariable *> NonPCCSVs;
-  QuickMetadata QMD(Context);
-  NamedMDNode *NamedMD = TheModule.getOrInsertNamedMetadata("revng.csv");
-  auto *Tuple = cast<MDTuple>(NamedMD->getOperand(0));
-  for (const MDOperand &Operand : Tuple->operands()) {
-    auto *CSV = cast<GlobalVariable>(QMD.extract<Constant *>(Operand.get()));
-    if (not PCH->affectsPC(CSV))
-      NonPCCSVs.insert(CSV);
-  }
+  for (GlobalVariable &CSV : FunctionTags::CSV.globals(&TheModule))
+    if (not PCH->affectsPC(&CSV))
+      NonPCCSVs.insert(&CSV);
 
   //
   // Clone the root function
@@ -1773,6 +1768,8 @@ void JumpTargetManager::harvestWithAVI() {
 
     SmallVector<MetaAddress, 16> Targets;
     SmallVector<StringRef> SymbolNames;
+
+    QuickMetadata QMD(Context);
 
     // Iterate over all the generated values
     for (const MDOperand &Operand : cast<MDTuple>(T)->operands()) {
