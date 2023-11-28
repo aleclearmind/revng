@@ -255,6 +255,11 @@ bool ToCABIConverter::verifyAlignment(uint64_t CurrentOffset,
                                       uint64_t NextAlignment) const {
   uint64_t PaddedSize = abi::FunctionType::paddedSizeOnStack(CurrentSize,
                                                              NextAlignment);
+  revng_log(Log,
+            "Attempting to verify alignment for an argument with size "
+              << CurrentSize << "(" << PaddedSize << " when padded) at offset "
+              << CurrentOffset << ". The next argument is at offset "
+              << NextOffset << " and is aligned at " << NextAlignment << ".");
 
   OverflowSafeInt Offset = CurrentOffset;
   Offset += PaddedSize;
@@ -265,7 +270,7 @@ bool ToCABIConverter::verifyAlignment(uint64_t CurrentOffset,
   }
 
   if (*Offset == NextOffset) {
-    // Offsets are the same, the next field makes sense.
+    revng_log(Log, "Argument slots in perfectly.");
     return true;
   } else if (*Offset < NextOffset) {
     // Offsets are different, there's most likely padding between the arguments.
@@ -283,23 +288,26 @@ bool ToCABIConverter::verifyAlignment(uint64_t CurrentOffset,
     // Check whether the next argument's position makes sense.
     uint64_t Delta = AdjustedAlignment - *Offset % AdjustedAlignment;
     if (Delta != AdjustedAlignment && *Offset + Delta == NextOffset) {
-      // Accounting for the next field's alignment solves it,
-      // the next field makes sense.
+      revng_log(Log,
+                "Argument slots in after accounting for the alignment of the "
+                "next field adjusted to "
+                  << AdjustedAlignment << " with the resulting difference of "
+                  << Delta << ".");
       return true;
     } else {
       revng_log(Log,
-                "The natural alignment of a type would make it impossible "
-                "to represent as CABI: there would have to be a hole between "
-                "two arguments. Abandon the conversion.");
+                "Error: The natural alignment of a type would make it "
+                "impossible to represent as CABI: there would have to be "
+                "a hole between two arguments. Abandon the conversion.");
       // TODO: we probably want to preprocess such functions and manually
       //       "fill" the holes in before attempting the conversion.
       return false;
     }
   } else {
     revng_log(Log,
-              "The natural alignment of a type would make it impossible "
-              "to represent as CABI: the arguments (including the padding) "
-              "would have to overlap. Abandon the conversion.");
+              "Error: The natural alignment of a type would make it "
+              "impossible to represent as CABI: the arguments (including "
+              "the padding) would have to overlap. Abandon the conversion.");
     return false;
   }
 }
