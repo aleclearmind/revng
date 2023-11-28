@@ -61,6 +61,22 @@ private:
   DistributedArguments positionBased(const model::QualifiedType &ArgumentType);
   DistributedArguments
   nonPositionBased(const model::QualifiedType &ArgumentType);
+
+public:
+  /// \returns true if adding the \ref CurrentType to an CABI-FT as is would
+  ///          make sense.
+  /// \note this calls `next` internally, so it's a bad idea to call both.
+  bool canBeNext(model::QualifiedType CurrentType,
+                 uint64_t CurrentOffset,
+                 uint64_t NextOffset,
+                 uint64_t NextAlignment);
+
+private:
+  // A helper used for finding padding holes.
+  bool verifyAlignment(uint64_t CurrentOffset,
+                       uint64_t CurrentSize,
+                       uint64_t NextOffset,
+                       uint64_t NextAlignment) const;
 };
 
 } // namespace abi::FunctionType
