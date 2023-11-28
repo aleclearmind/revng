@@ -63,4 +63,18 @@ filterTypes(TrackingSortedVector<UpcastablePointer<model::Type>> &Types) {
   return Result;
 }
 
+/// Make a standalone type by placing it into a brand new `Binary`.
+///
+/// \returns A pair consisting of an unqualified `model::QualifiedType`
+///          and the `Binary` that controls the lifetime of it.
+template<derived_from<model::Type> NewType, typename... ArgumentTypes>
+[[nodiscard]] std::pair<model::QualifiedType, TupleTree<model::Binary>>
+temporaryQualifiedType(ArgumentTypes &&...Args) {
+  std::pair<model::QualifiedType, TupleTree<model::Binary>> R;
+  auto P = R.second->makeType<NewType>(std::forward<ArgumentTypes>(Args)...);
+  auto [New, NewPath] = P;
+  R.first = { NewPath, {} };
+  return R;
+}
+
 } // namespace abi::FunctionType
