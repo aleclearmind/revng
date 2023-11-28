@@ -253,7 +253,8 @@ bool ToCABIConverter::verifyAlignment(uint64_t CurrentOffset,
                                       uint64_t CurrentSize,
                                       uint64_t NextOffset,
                                       uint64_t NextAlignment) const {
-  uint64_t PaddedSize = ABI.paddedSizeOnStack(CurrentSize);
+  uint64_t PaddedSize = abi::FunctionType::paddedSizeOnStack(CurrentSize,
+                                                             NextAlignment);
 
   OverflowSafeInt Offset = CurrentOffset;
   Offset += PaddedSize;
