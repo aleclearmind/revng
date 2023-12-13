@@ -24,6 +24,7 @@ namespace abi::FunctionType {
 
 class ToCABIConverter {
 private:
+  // Use a simple SortedVector, no reason to use the Tracking one.
   using ArgumentRegisters = TrackingSortedVector<model::NamedTypedRegister>;
   using ReturnValueRegisters = TrackingSortedVector<model::TypedRegister>;
 
@@ -47,6 +48,7 @@ public:
     Bucket(Binary),
     UseSoftRegisterStateDeductions(UseSoftRegisterStateDeductions) {}
 
+  // Why public?
   [[nodiscard]] std::optional<Converted>
   tryConvert(const model::RawFunctionType &FunctionType) {
     // Register arguments first.
@@ -136,6 +138,7 @@ private:
   tryConvertingReturnValue(const ReturnValueRegisters &Registers);
 };
 
+// Docs
 std::optional<model::TypePath>
 tryConvertToCABI(const model::RawFunctionType &FunctionType,
                  TupleTree<model::Binary> &Binary,
@@ -150,6 +153,8 @@ tryConvertToCABI(const model::RawFunctionType &FunctionType,
   LoggerIndent Indentation(Log);
 
   const abi::Definition &ABI = abi::Definition::get(*MaybeABI);
+  // It checking this strictly necessary or are we going to fail anyway later on
+  // if we don't do this?
   if (ABI.isIncompatibleWith(FunctionType)) {
     revng_log(Log,
               "FAIL: the function is not compatible with `"
@@ -209,6 +214,7 @@ TCC::tryConvertingRegisterArguments(const ArgumentRegisters &Registers) {
   abi::RegisterState::Map Map(model::ABI::getArchitecture(ABI.ABI()));
   for (const model::NamedTypedRegister &Reg : Registers)
     Map[Reg.Location()].IsUsedForPassingArguments = abi::RegisterState::Yes;
+
   abi::RegisterState::Map DeductionResults = Map;
   if (UseSoftRegisterStateDeductions) {
     std::optional MaybeDeductionResults = ABI.tryDeducingRegisterState(Map);
@@ -326,6 +332,15 @@ bool ArgumentDistributor::verifyAlignment(uint64_t CurrentOffset,
   }
 }
 
+// It might make more sense to move the body of this method into
+// ToCABIConverter, since its only used by tryConvertingStackArguments.
+// Same for verifyAlignment, I think.
+// My goal would be to better isolate `ArgumentDistributor` (and
+// `DistributeOne`) from the rest of the code by:
+//
+// 1. Moving this method (along with `verifyAlignment`) closer to its only user.
+// 2. Have `ToRawConverter::distributeReturnValue` use a regular
+//    `ArgumentDistributor` instead of using `distributeOne` directly.
 bool ArgumentDistributor::canBeNext(model::QualifiedType CurrentType,
                                     uint64_t CurrentOffset,
                                     uint64_t NextOffset,
@@ -377,6 +392,7 @@ bool ArgumentDistributor::canBeNext(model::QualifiedType CurrentType,
   return true;
 }
 
+// Rename `DistributionHelper` to just `Distributor`
 std::optional<llvm::SmallVector<model::Argument, 8>>
 TCC::tryConvertingStackArguments(model::QualifiedType StackArgumentTypes,
                                  ArgumentDistributor DistributionHelper) {
@@ -394,9 +410,11 @@ TCC::tryConvertingStackArguments(model::QualifiedType StackArgumentTypes,
   auto *Unqualified = StackArgumentTypes.UnqualifiedType().get();
   model::StructType &Stack = *llvm::cast<model::StructType>(Unqualified);
 
+  // Is there a "non-full" or "partial" alignment?
   // Compute the full alignment.
   uint64_t FullAlignment = *ABI.alignment(StackArgumentTypes);
   if (!llvm::isPowerOf2_64(FullAlignment)) {
+    // Assert? Same below.
     revng_log(Log,
               "The natural alignment of a type is not a power of two:\n"
                 << serializeToString(Stack));
@@ -428,6 +446,10 @@ TCC::tryConvertingStackArguments(model::QualifiedType StackArgumentTypes,
   // happens when we meet an argument we cannot just convert "as is").
   uint64_t CurrentStackOffset = 0;
   llvm::SmallVector<model::Argument, 8> Result;
+  // I think this can be rewritten this using some form of zip and make much
+  // clearer.
+  // Also I'd add a `bool Successful` instead of relying on
+  // `CurrentRange.size() == 1`
   auto CurrentRange = std::ranges::subrange(Stack.Fields().begin(),
                                             Stack.Fields().end());
   while (CurrentRange.size() > 1) {
@@ -485,6 +507,9 @@ TCC::tryConvertingStackArguments(model::QualifiedType StackArgumentTypes,
     }
   }
 
+  // I'm not asking to do this, but could we, in theory, create a struct
+  // argument to bundle non-conforming fields and then go back to emit regular
+  // stack arguments?
   // Getting to this point (past the return statement in the last element
   // section) means that there is at least one argument we cannot just "add".
   revng_log(Log,

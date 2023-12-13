@@ -9,6 +9,9 @@
 
 namespace abi::FunctionType {
 
+// This is a general purpose function.
+// In revng-c we put these kind of things into lib/Support/ModelHelpers.cpp.
+// We could move it there, or in `model::Binary` or in `TupleTree<T>`
 const model::TypePath &replaceAllUsesWith(const model::Type::Key &OldKey,
                                           const model::TypePath &NewTypePath,
                                           TupleTree<model::Binary> &Model) {

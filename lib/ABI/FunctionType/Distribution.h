@@ -4,6 +4,7 @@
 // This file is distributed under the MIT License. See LICENSE.md for details.
 //
 
+#include "revng/ABI/Definition.h"
 #include "llvm/ADT/SmallVector.h"
 
 namespace abi::FunctionType {
@@ -20,6 +21,7 @@ struct DistributedArgument {
   uint64_t Size = 0;
 
   /// The size of the piece of the argument placed on the stack.
+  // Can we verify the following in some `verify` method somewhere?
   /// \note: has to be equal to `0` or `this->Size` for any ABI for which
   ///        `abi::Definition::ArgumentsCanBeSplitBetweenRegistersAndStack()`
   ///        returns `false`. Otherwise, it has to be an integer value, such
@@ -38,6 +40,7 @@ struct DistributedArgument {
 using DistributedArguments = llvm::SmallVector<DistributedArgument, 8>;
 
 using RegisterSpan = std::span<const model::Register::Values>;
+// Never use TrackingSortedVector out of the model
 using ArgumentSet = TrackingSortedVector<model::Argument>;
 
 class ArgumentDistributor {
@@ -63,6 +66,11 @@ private:
   nonPositionBased(const model::QualifiedType &ArgumentType);
 
 public:
+  // 1. `canBeNext` is a misleading name. This method changes the internal state
+  //    of `ArgumentDistributor`. Rename to `consume` or `tryConsume`.
+  // 2. AFAIU this is more or less exactly the same as `next`, except that it
+  //    checks if it's feasible to have this value as an argument knowning what
+  //    the next value will look like (in terms of offset and alignment).
   /// \returns true if adding the \ref CurrentType to an CABI-FT as is would
   ///          make sense.
   /// \note this calls `next` internally, so it's a bad idea to call both.

@@ -318,6 +318,7 @@ public:
   /// Make sure current definition is valid.
   bool verify() const debug_function;
 
+  // Better to keep methods with non-negating names: isCompatibleWith
   /// Checks whether a given function data does not contradict this ABI
   ///
   /// \note this is not an exhaustive check, so if it returns `false`,

@@ -111,6 +111,9 @@ static model::QualifiedType chooseType(const model::QualifiedType &ArgumentType,
   return ArgumentType;
 }
 
+// This is basically the implementation of `convertToRaw`, see if we can inline
+// it there instead of loading `ToRawConverter` with this logic that's never
+// going to be reused anywhere else.
 model::TypePath
 ToRawConverter::convert(const model::CABIFunctionType &FunctionType,
                         TupleTree<model::Binary> &Binary) const {
@@ -390,6 +393,7 @@ ArgumentDistributor::positionBased(const QType &ArgumentType) {
   return { Result };
 }
 
+// State who uses this, specifically.
 /// Helper for converting a single object into a "distributed" state.
 ///
 /// \param Type The type of the object.
@@ -484,6 +488,9 @@ distributeOne(const abi::Definition &ABI,
                 "registers to also be aligned, an extra register needs "
                 "to be used to hold the padding.");
 
+      // Why do we need these padding arguments at all? AFAIU we could just
+      // increment the number of consumed registers and not emit this fake
+      // argument at all.
       // Add an extra "padding" argument to represent this.
       DistributedArgument &Padding = Result.emplace_back();
       Padding.Registers = { Registers[OccupiedRegisterCount++] };
@@ -622,6 +629,8 @@ DistributedArguments
 ToRawConverter::distributeArguments(const ArgumentSet &Arguments,
                                     bool HasReturnValueLocationArgument) const {
   uint64_t SkippedRegisterCount = 0;
+  // I feel like some of the following code should be an assertion more than an
+  // `if`
   if (HasReturnValueLocationArgument == true)
     if (const auto &GPRs = ABI.GeneralPurposeArgumentRegisters(); !GPRs.empty())
       if (ABI.ReturnValueLocationRegister() == GPRs[0])
@@ -665,6 +674,15 @@ ToRawConverter::distributeReturnValue(const QualifiedType &ReturnValue) const {
                                      ABI.MaximumGPRsPerAggregateReturnValue();
   }
 
+  // 1. Could we use ArgumentDistributor here? distributeOne seems an internal
+  //    support function and it'd be nice to make it available only to one user.
+  //    This file would benefit a lot from being splitted in one file per main
+  //    class (`ToRawConverter`, `ToCABIConverter`, `Layout`,
+  //    `ArgumentDistributor`)
+  // 2. If we do this, `ArgumentDistributor` should be renamed to
+  //    `ValueDistributor` or something like that. In any case, the fact that
+  //    `distributeReturnValue` returns a `DistributedArgument` doesn't sound
+  //    right. I'd switch to `DistributedValue` even there.
   auto [R, _] = distributeOne(ABI, ReturnValue, RegisterList, 0, Limit, false);
   revng_assert(R.size() == 1);
   return R[0];
@@ -678,6 +696,9 @@ model::TypePath convertToRaw(const model::CABIFunctionType &FunctionType,
 
 Layout::Layout(const model::CABIFunctionType &Function) {
   const abi::Definition &ABI = abi::Definition::get(Function.ABI());
+  // Here we're not "going to Raw". ToRawConverter is probablye more like
+  // `CABIFunctionTypeLowerer`.
+  // `ToCABIConverter` is probably more like "RawFunctionLifter"
   ToRawConverter Converter(ABI);
 
   //
@@ -757,6 +778,10 @@ Layout::Layout(const model::CABIFunctionType &Function) {
       else
         Current.Kind = ArgumentKind::ReferenceToAggregate;
 
+      // Using `std::move` here is early optimization and introduces a
+      // liability. If you really want to do that, after the loop To something
+      // like Converted.clear(), but I don't think the liabilty and the extra
+      // complexity is worth it here.
       Current.Registers = std::move(Distributed.Registers);
       if (Distributed.SizeOnStack != 0) {
         // The argument has a part (or is placed entirely) on the stack.
