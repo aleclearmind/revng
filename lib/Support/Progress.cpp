@@ -9,8 +9,11 @@
 
 #include "llvm/Support/Mutex.h"
 #include "llvm/Support/Progress.h"
+#include "llvm/Support/Signals.h"
 
 #include "revng/Support/Debug.h"
+
+static void destroyTraceProgressListener(void *OpaqueListener);
 
 class TraceProgressListener : public llvm::ProgressListener {
 private:
@@ -19,6 +22,7 @@ private:
   // TODO: consider buffering in thread-local buffers
   llvm::sys::Mutex OutputMutex;
   llvm::raw_fd_ostream Output;
+  bool Closed = false;
 
 public:
   static constexpr bool AllThreads = true;
@@ -27,9 +31,20 @@ public:
   TraceProgressListener(llvm::StringRef OutputPath) : Output(OutputPath, EC) {
     revng_assert(!EC);
     Output << "[\n";
+    llvm::sys::AddSignalHandler(destroyTraceProgressListener, this);
   }
 
-  ~TraceProgressListener() override { Output << "{}]\n"; }
+  ~TraceProgressListener() override { close("Graceful exit"); }
+
+public:
+  void close(llvm::StringRef ExitReason) {
+    if (not Closed) {
+      Closed = true;
+      emitEvent<false>(ExitReason, "task", "i");
+      Output << "]\n";
+      Output.flush();
+    }
+  }
 
 public:
   void handleNewTask(const llvm::Task *T) override {
@@ -53,6 +68,7 @@ public:
     emitEvent(T->stepName(), "task", "B");
   }
 
+  template<bool EmitTrailingComma=true>
   void emitEvent(llvm::StringRef Name,
                  llvm::StringRef Category,
                  llvm::StringRef Phase) {
@@ -67,7 +83,10 @@ public:
     Output << "\"ts\": " << Timestamp << ", ";
     Output << "\"pid\": " << getpid() << ", ";
     Output << "\"tid\": " << getpid();
-    Output << "},\n";
+    Output << "}";
+    if (EmitTrailingComma)
+      Output << ",";
+    Output << "\n";
   }
 };
 
@@ -288,6 +307,11 @@ public:
     Output << Buffer;
   }
 };
+
+static void destroyTraceProgressListener(void *OpaqueListener) {
+  auto *Listener = static_cast<TraceProgressListener *>(OpaqueListener);
+  Listener->close("Exit due to signal");
+}
 
 using namespace llvm::cl;
 
