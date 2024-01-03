@@ -14,6 +14,7 @@ revng_add_analyses_library_internal(
   CollectFunctionsFromCalleesPass.cpp
   CollectFunctionsFromUnusedAddressesPass.cpp
   DetectABI.cpp
+  EFA4.cpp
   FunctionMetadata.cpp
   FunctionSummaryOracle.cpp
   IndirectBranchInfoPrinterPass.cpp

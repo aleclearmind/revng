@@ -5,10 +5,14 @@
 //
 
 #include <fstream>
+#include <iterator>
 #include <memory>
 
+#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/PostOrderIterator.h"
 #include "llvm/ADT/SmallSet.h"
+#include "llvm/IR/GlobalVariable.h"
+#include "llvm/IR/Instruction.h"
 #include "llvm/IR/Module.h"
 #include "llvm/Support/GraphWriter.h"
 
@@ -19,6 +23,7 @@
 #include "revng/BasicAnalyses/GeneratedCodeBasicInfo.h"
 #include "revng/EarlyFunctionAnalysis/CFGAnalyzer.h"
 #include "revng/EarlyFunctionAnalysis/CallGraph.h"
+#include "revng/EarlyFunctionAnalysis/CollectCFG.h"
 #include "revng/EarlyFunctionAnalysis/CollectFunctionsFromCalleesPass.h"
 #include "revng/EarlyFunctionAnalysis/CollectFunctionsFromUnusedAddressesPass.h"
 #include "revng/EarlyFunctionAnalysis/DetectABI.h"
@@ -75,6 +80,11 @@ static opt<ABIOpt> ABIEnforcement("abi-enforcement-level",
 
 static Logger<> Log("detect-abi");
 
+struct Changes {
+  bool Function = false;
+  std::set<MetaAddress> Callees;
+};
+
 class DetectABIAnalysis {
 private:
   template<typename... T>
@@ -124,6 +134,8 @@ using BasicBlockQueue = UniquedQueue<const BasicBlockNode *>;
 class DetectABI {
 private:
   using CSVSet = std::set<llvm::GlobalVariable *>;
+  using BasicBlockToNodeMap = llvm::DenseMap<llvm::BasicBlock *,
+                                             BasicBlockNode *>;
 
 private:
   llvm::Module &M;
@@ -134,6 +146,7 @@ private:
   CFGAnalyzer &Analyzer;
 
   CallGraph ApproximateCallGraph;
+  BasicBlockToNodeMap BasicBlockNodeMap;
 
 public:
   DetectABI(llvm::Module &M,
@@ -150,6 +163,8 @@ public:
 
 public:
   void run() {
+    llvm::Task Task(6, "DetectABI");
+    Task.advance("computeApproximateCallGraph");
     computeApproximateCallGraph();
 
     // Perform a preliminary analysis of the function
@@ -160,19 +175,30 @@ public:
     // 2. the list of callee-saved registers;
     // 3. the final stack offset;
     // 4. the CFG (specifically, which indirect jumps are returns);
+    Task.advance("preliminaryFunctionAnalysis");
     preliminaryFunctionAnalysis();
 
+    static bool First = true;
+    if (First) {
+      First = false;
+      return;
+    }
+
     // Run the (fixed-point) analysis of the ABI of each function
+    Task.advance("analyzeABI");
     analyzeABI();
 
     // Refine results with ABI-specific information
+    Task.advance("applyABIDeductions");
     applyABIDeductions();
 
     // Commit the results onto the model. A non-const model is taken as
     // argument to be written.
+    Task.advance("finalizeModel");
     finalizeModel();
 
     // Propagate prototypes
+    Task.advance("propagatePrototypes");
     propagatePrototypes();
   }
 
@@ -180,9 +206,9 @@ private:
   void computeApproximateCallGraph();
   void preliminaryFunctionAnalysis();
   void analyzeABI();
-  bool analyzeFunctionABI(const model::Function &Function,
-                          OutlinedFunction &OutlinedFunction,
-                          OpaqueRegisterUser &Clobberer);
+  Changes analyzeFunctionABI(const model::Function &Function,
+                             OutlinedFunction &OutlinedFunction,
+                             OpaqueRegisterUser &Clobberer);
   void applyABIDeductions();
 
   /// Finish the population of the model by building the prototype
@@ -200,8 +226,8 @@ private:
   TrackingSortedVector<model::Register::Values>
   computePreservedRegisters(const CSVSet &ClobberedRegisters) const;
 
-  bool runAnalyses(MetaAddress EntryAddress,
-                   OutlinedFunction &OutlinedFunction);
+  Changes runAnalyses(MetaAddress EntryAddress,
+                      OutlinedFunction &OutlinedFunction);
 
   CSVSet findWrittenRegisters(llvm::Function *F);
 
@@ -218,9 +244,6 @@ private:
 
 void DetectABI::computeApproximateCallGraph() {
   using llvm::BasicBlock;
-
-  using BasicBlockToNodeMap = llvm::DenseMap<BasicBlock *, BasicBlockNode *>;
-  BasicBlockToNodeMap BasicBlockNodeMap;
 
   // Temporary worklist to collect the function entrypoints
   llvm::SmallVector<BasicBlock *, 8> Worklist;
@@ -396,9 +419,11 @@ void DetectABI::preliminaryFunctionAnalysis() {
 }
 
 void DetectABI::analyzeABI() {
+  llvm::Task Task(2, "analyzeABI");
   std::map<MetaAddress, std::unique_ptr<OutlinedFunction>> Functions;
 
   // Create all temporary functions
+  Task.advance("Create temporary functions");
   for (model::Function &Function : Binary->Functions()) {
     llvm::BasicBlock *Entry = GCBI.getBlockAt(Function.Entry());
     auto NewFunction = make_unique<OutlinedFunction>(Analyzer.outline(Entry));
@@ -409,26 +434,43 @@ void DetectABI::analyzeABI() {
   OpaqueRegisterUser RegisterReader(&M);
 
   // TODO: this really needs to become a monotone framework
-  bool Changed = true;
+  Task.advance("Run fixed-point analyses");
+  llvm::Task FixedPointTask({}, "Fixed-point analysis");
+  UniquedQueue<model::Function *> ToAnalyze;
+  for (model::Function &Function : Binary->Functions())
+    ToAnalyze.insert(&Function);
+
   unsigned Runs = 0;
-  while (Changed) {
-    ++Runs;
-    revng_log(Log, "Run #" << Runs);
-    LoggerIndent<> Indent(Log);
+  while (not ToAnalyze.empty()) {
+    model::Function &Function = *ToAnalyze.pop();
+    FixedPointTask.advance(Function.name());
+    OutlinedFunction &OutlinedFunction = *Functions.at(Function.Entry());
+    Changes Changes = analyzeFunctionABI(Function,
+                                         OutlinedFunction,
+                                         RegisterReader);
 
-    Changed = false;
+    if (Changes.Function) {
+      // The prototype of the function we analyzed has changed, reanalyze
+      // callers
+      auto &FunctionNode = BasicBlockNodeMap[GCBI.getBlockAt(Function.Entry())];
+      for (auto &CallerNode : FunctionNode->predecessors()) {
+        if (CallerNode->Address.isValid())
+          ToAnalyze.insert(&Binary->Functions().at(CallerNode->Address));
+      }
+    }
 
-    for (model::Function &Function : Binary->Functions()) {
-      OutlinedFunction &OutlinedFunction = *Functions.at(Function.Entry());
-      Changed = analyzeFunctionABI(Function, OutlinedFunction, RegisterReader)
-                or Changed;
+    // Register for re-analysis all the callees for which we have new
+    // information
+    for (const MetaAddress &ToReanalyze : Changes.Callees) {
+      revng_assert(ToReanalyze.isValid());
+      ToAnalyze.insert(&Binary->Functions().at(ToReanalyze));
     }
   }
 }
 
-bool DetectABI::analyzeFunctionABI(const model::Function &Function,
-                                   OutlinedFunction &OutlinedFunction,
-                                   OpaqueRegisterUser &RegisterReader) {
+Changes DetectABI::analyzeFunctionABI(const model::Function &Function,
+                                      OutlinedFunction &OutlinedFunction,
+                                      OpaqueRegisterUser &RegisterReader) {
   //
   // Enrich all the call sites
   //
@@ -484,11 +526,11 @@ bool DetectABI::analyzeFunctionABI(const model::Function &Function,
   }
 
   // Perform the analysis
-  bool Result = runAnalyses(Function.Entry(), OutlinedFunction);
+  Changes Changes = runAnalyses(Function.Entry(), OutlinedFunction);
 
   RegisterReader.purgeCreated();
 
-  return Result;
+  return Changes;
 }
 
 void DetectABI::applyABIDeductions() {
@@ -982,8 +1024,8 @@ suppressCSAndSPRegisters(ABIAnalyses::ABIAnalysesResults &ABIResults,
   }
 }
 
-bool DetectABI::runAnalyses(MetaAddress EntryAddress,
-                            OutlinedFunction &OutlinedFunction) {
+Changes DetectABI::runAnalyses(MetaAddress EntryAddress,
+                               OutlinedFunction &OutlinedFunction) {
   using namespace llvm;
   using llvm::BasicBlock;
   using namespace ABIAnalyses;
@@ -1024,23 +1066,25 @@ bool DetectABI::runAnalyses(MetaAddress EntryAddress,
   Summary.ABIResults.combine(ABIResults);
   Summary.WrittenRegisters = WrittenRegisters;
 
-  bool Changed = Old != Summary.ABIResults;
+  Changes Changes;
+  Changes.Function = Old != Summary.ABIResults;
 
   for (auto &[BlockID, CallSite] : ABIResults.CallSites) {
     if (BlockID.isInlined())
       continue;
 
-    auto Set = [&Changed](abi::RegisterState::Values &Value) {
+    MetaAddress Callee = CallSite.CalleeAddress;
+
+    auto Set = [&Changes, &Callee](abi::RegisterState::Values &Value) {
       const auto Yes = abi::RegisterState::Yes;
       if (Value != Yes) {
         Value = Yes;
-        Changed = true;
+        Changes.Callees.insert(Callee);
       }
     };
 
     // TODO: eventually we'll want to add arguments/return values to dynamic
     //       functions too
-    MetaAddress Callee = CallSite.CalleeAddress;
     if (Callee.isValid()) {
       auto &CalleeSummary = Oracle.getLocalFunction(Callee);
 
@@ -1052,7 +1096,7 @@ bool DetectABI::runAnalyses(MetaAddress EntryAddress,
     }
   }
 
-  return Changed;
+  return Changes;
 }
 
 bool DetectABIPass::runOnModule(Module &M) {
@@ -1084,3 +1128,94 @@ using ABIDetectionPass = RegisterPass<DetectABIPass>;
 static ABIDetectionPass X("detect-abi", "ABI Detection Pass", true, false);
 
 } // namespace efa
+
+#if 0
+#include "revng/MFP/MFP.h"
+
+template<typename SetElement>
+class RegisterSetMFI {
+public:
+  using Set = llvm::DenseSet<const SetElement *>;
+  using LatticeElement = Set;
+  using Label = const llvm::BasicBlock *;
+
+public:
+  Set combineValues(const Set &LHS, const Set &RHS) const {
+    Set Result = LHS;
+    llvm::copy(RHS, std::back_inserter(Result));
+    return Result;
+  };
+
+  bool isLessOrEqual(const Set &LHS, const Set &RHS) const {
+    // WIP: correct?
+    return std::includes(RHS.begin(), RHS.end(), LHS.begin(), LHS.end());
+  };
+};
+
+class LivenessAnalysis : public RegisterSetMFI<llvm::GlobalVariable> {
+private:
+  using RegisterSet = Set;
+
+public:
+  using GraphType = llvm::Inverse<const llvm::BasicBlock *>;
+
+public:
+  RegisterSet applyTransferFunction(const llvm::BasicBlock *Block,
+                                    const RegisterSet &InitialState) const {
+    RegisterSet Result = InitialState;
+
+    for (const llvm::Instruction &I :
+         make_range(Block->rbegin(), Block->rend())) {
+      if (const auto *Load = dyn_cast<LoadInst>(&I)) {
+        // WIP: limit to CSVs
+        if (auto *CSV = dyn_cast<GlobalVariable>(Load->getPointerOperand()))
+          Result.insert(CSV);
+      } else if (const auto *Store = dyn_cast<StoreInst>(&I)) {
+        // WIP: limit to CSVs
+        if (auto *CSV = dyn_cast<GlobalVariable>(Store->getPointerOperand()))
+          Result.erase(CSV);
+      }
+    }
+
+    return Result;
+  }
+};
+
+class ReachingDefinitions : public RegisterSetMFI<llvm::StoreInst> {
+private:
+  using WritersSet = Set;
+
+public:
+  using GraphType = const llvm::BasicBlock *;
+
+public:
+  WritersSet applyTransferFunction(const llvm::BasicBlock *Block,
+                                   const WritersSet &InitialState) const {
+    WritersSet Result = InitialState;
+
+    for (const llvm::Instruction &I : *Block) {
+
+      if (auto *Store = dyn_cast<StoreInst>(&I)) {
+        // WIP: limit to CSVs
+        if (auto *Pointer = dyn_cast<GlobalVariable>(Store
+                                                       ->getPointerOperand())) {
+          // Erase stores targeting the same pointer
+          auto TargetsPointer = [Pointer](const auto *Other) -> bool {
+            return Other->getPointerOperand() == Pointer;
+          };
+          llvm::erase_if(Result, TargetsPointer);
+
+          // Insert Store in the set
+          Result.insert(Store);
+        }
+      }
+
+    }
+
+    return Result;
+  }
+};
+
+static_assert(MFP::MonotoneFrameworkInstance<LivenessAnalysis>);
+static_assert(MFP::MonotoneFrameworkInstance<ReachingDefinitions>);
+#endif
