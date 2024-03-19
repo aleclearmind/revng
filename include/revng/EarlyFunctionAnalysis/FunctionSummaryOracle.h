@@ -7,7 +7,7 @@
 #include <set>
 
 #include "revng/ADT/MutableSet.h"
-#include "revng/EarlyFunctionAnalysis/ABIAnalysis.h"
+#include "revng/EarlyFunctionAnalysis/AnalyzeRegisterUsage.h"
 #include "revng/EarlyFunctionAnalysis/BasicBlock.h"
 #include "revng/Model/FunctionAttribute.h"
 
@@ -24,18 +24,18 @@ using AttributesSet = MutableSet<model::FunctionAttribute::Values>;
 struct FunctionSummary {
 public:
   AttributesSet Attributes;
-  std::set<llvm::GlobalVariable *> ClobberedRegisters;
+  efa::CSVSet ClobberedRegisters;
   // TODO: this field is populated in a different maneer from all the others,
   //       consider changing how this works
-  ABIAnalyses::ABIAnalysesResults ABIResults;
+  RUAResults ABIResults;
   SortedVector<efa::BasicBlock> CFG;
   std::optional<int64_t> ElectedFSO;
-  std::set<llvm::GlobalVariable *> WrittenRegisters;
+  CSVSet WrittenRegisters;
 
 public:
   FunctionSummary(MutableSet<model::FunctionAttribute::Values> Attributes,
-                  std::set<llvm::GlobalVariable *> ClobberedRegisters,
-                  ABIAnalyses::ABIAnalysesResults ABIResults,
+                  CSVSet ClobberedRegisters,
+                  RUAResults ABIResults,
                   SortedVector<efa::BasicBlock> CFG,
                   std::optional<int64_t> ElectedFSO) :
     Attributes(Attributes),

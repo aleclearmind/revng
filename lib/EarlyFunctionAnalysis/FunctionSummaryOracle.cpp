@@ -4,6 +4,8 @@
 // This file is distributed under the MIT License. See LICENSE.md for details.
 //
 
+#include "llvm/IR/GlobalVariable.h"
+
 #include "revng/ABI/FunctionType/Layout.h"
 #include "revng/ADT/STLExtras.h"
 #include "revng/EarlyFunctionAnalysis/FunctionSummaryOracle.h"
@@ -27,7 +29,6 @@ enum class PrototypeImportLevel {
 template<PrototypeImportLevel Level>
 struct PrototypeImporter {
   using Register = model::Register::Values;
-  using State = abi::RegisterState::Values;
 
 public:
   llvm::Module &M;
