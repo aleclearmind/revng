@@ -25,7 +25,7 @@ struct FunctionSummary {
 public:
   AttributesSet Attributes;
   efa::CSVSet ClobberedRegisters;
-  // TODO: this field is populated in a different maneer from all the others,
+  // TODO: this field is populated in a different manner from all the others,
   //       consider changing how this works
   RUAResults ABIResults;
   SortedVector<efa::BasicBlock> CFG;
@@ -100,7 +100,7 @@ public:
 /// An oracle providing information about functions.
 ///
 /// This oracle can be populated with analysis results. But even if it has not
-/// been popoulated with any result, it will still provide conservative results
+/// been populated with any result, it will still provide conservative results
 /// about the function.
 class FunctionSummaryOracle {
 private:
