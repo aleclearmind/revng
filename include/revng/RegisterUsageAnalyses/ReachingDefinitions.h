@@ -135,20 +135,17 @@ public:
     WritersSet Result = InitialState;
 
     for (const Operation &Operation : *Block) {
+      RegisterWriters &Writes = Result[Operation.Target];
+
       switch (Operation.Type) {
-      case OperationType::Write:
-      case OperationType::Clobber: {
-        RegisterWriters &Writes = Result[Operation.Target];
-
+      case OperationType::Write: {
         Writes.Reaching.reset();
-
-        if (Operation.Type == OperationType::Write) {
-          Writes.Reaching.set(WriteToIndex.find(&Operation)->second);
-        }
-
+        Writes.Reaching.set(WriteToIndex.find(&Operation)->second);
+      } break;
+      case OperationType::Clobber: {
+        Writes.Reaching.reset();
       } break;
       case OperationType::Read: {
-        RegisterWriters &Writes = Result[Operation.Target];
         Writes.Read |= Writes.Reaching;
       } break;
       case OperationType::Invalid:
