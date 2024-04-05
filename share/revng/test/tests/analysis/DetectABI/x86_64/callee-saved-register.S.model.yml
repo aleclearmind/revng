@@ -1,0 +1,14 @@
+---
+Functions:
+  - OriginalName:    function
+    Prototype:       "/Types/1814-RawFunctionType"
+Types:
+  - ID:              1814
+    Kind:            RawFunctionType
+    # WIP: no rbp
+    Arguments:       []
+    # WIP: no rbp
+    ReturnValues:    []
+    PreservedRegisters:
+      - rbp_x86_64
+...

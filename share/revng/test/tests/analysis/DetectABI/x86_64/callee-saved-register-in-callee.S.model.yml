@@ -1,0 +1,18 @@
+---
+Functions:
+  - OriginalName:    callee
+    Prototype:       "/Types/1814-RawFunctionType"
+  - OriginalName:    caller
+    Prototype:       "/Types/1815-RawFunctionType"
+Types:
+  - ID:              1814
+    Kind:            RawFunctionType
+    PreservedRegisters:
+      - rbp_x86_64
+  - ID:              1815
+    Kind:            RawFunctionType
+    # WIP: no rbp
+    Arguments:       []
+    # WIP: no rbp
+    ReturnValues:    []
+...
