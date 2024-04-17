@@ -28,6 +28,7 @@
 
 using namespace llvm;
 
+// WIP: rename rua-analyses?
 static Logger<> Log("abi-analyses");
 
 namespace efa {
@@ -281,10 +282,13 @@ RUAResults analyzeRegisterUsage(Function *F,
 
     for (const auto &[PC, CallSite] : Function.CallSites) {
       auto &ResultsCallSite = FinalResults.CallSites[PC];
+      ResultsCallSite.CalleeAddress = CallSite.Callee;
+
+      auto *PostNode = CallSite.Block;
       revng_log(Log,
                 "Registers alive after the call to "
-                  << CallSite.Callee.toString() << " at " << PC.toString());
-      auto *PostNode = CallSite.Block;
+                  << CallSite.Callee.toString() << " at " << PC.toString()
+                  << " (block " << PostNode->label() << ")");
       const BitVector &CallSiteResult = AnalysisResult.at(PostNode).InValue;
       for (auto Register : Function.Function.registersInSet(CallSiteResult)) {
         // This register is alive after the call site
@@ -333,6 +337,7 @@ RUAResults analyzeRegisterUsage(Function *F,
 
     for (const auto &[PC, CallSite] : Function.CallSites) {
       auto &ResultsCallSite = FinalResults.CallSites[PC];
+      ResultsCallSite.CalleeAddress = CallSite.Callee;
       revng_log(Log,
                 "Registers with at least one write that reaches the call to "
                   << CallSite.Callee.toString() << " at " << PC.toString()

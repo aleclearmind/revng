@@ -23,11 +23,13 @@
 #include "revng/ADT/Queue.h"
 #include "revng/BasicAnalyses/GeneratedCodeBasicInfo.h"
 #include "revng/EarlyFunctionAnalysis/CFGAnalyzer.h"
+#include "revng/EarlyFunctionAnalysis/CallEdge.h"
 #include "revng/EarlyFunctionAnalysis/CallGraph.h"
 #include "revng/EarlyFunctionAnalysis/CollectCFG.h"
 #include "revng/EarlyFunctionAnalysis/CollectFunctionsFromCalleesPass.h"
 #include "revng/EarlyFunctionAnalysis/CollectFunctionsFromUnusedAddressesPass.h"
 #include "revng/EarlyFunctionAnalysis/DetectABI.h"
+#include "revng/EarlyFunctionAnalysis/FunctionEdgeBase.h"
 #include "revng/EarlyFunctionAnalysis/FunctionMetadata.h"
 #include "revng/EarlyFunctionAnalysis/FunctionSummaryOracle.h"
 #include "revng/Model/Binary.h"
@@ -40,6 +42,7 @@
 #include "revng/Support/BasicBlockID.h"
 #include "revng/Support/Debug.h"
 #include "revng/Support/IRHelpers.h"
+#include "revng/Support/MetaAddress.h"
 #include "revng/Support/OpaqueRegisterUser.h"
 
 using namespace llvm;
@@ -178,12 +181,6 @@ public:
     Task.advance("preliminaryFunctionAnalysis");
     preliminaryFunctionAnalysis();
 
-    static bool First = true;
-    if (First) {
-      First = false;
-      return;
-    }
-
     // Run the (fixed-point) analysis of the ABI of each function
     Task.advance("analyzeABI");
     analyzeABI();
@@ -320,6 +317,9 @@ void DetectABI::computeApproximateCallGraph() {
 }
 
 void DetectABI::preliminaryFunctionAnalysis() {
+  revng_log(Log, "Running the preliminary function analysis");
+  LoggerIndent<> LodIndent(Log);
+
   BasicBlockQueue EntrypointsQueue;
 
   //
@@ -348,7 +348,7 @@ void DetectABI::preliminaryFunctionAnalysis() {
   while (!EntrypointsQueue.empty()) {
     const BasicBlockNode *EntryNode = EntrypointsQueue.pop();
     MetaAddress EntryPointAddress = EntryNode->Address;
-    revng_log(Log, "Analyzing Entry: " << EntryPointAddress.toString());
+    revng_log(Log, "Analyzing " << EntryPointAddress.toString());
     LoggerIndent<> Indent(Log);
 
     llvm::BasicBlock *BB = GCBI.getBlockAt(EntryNode->Address);
@@ -418,9 +418,35 @@ void DetectABI::preliminaryFunctionAnalysis() {
       }
     }
   }
+
+  // Register all indirect call sites in all functions, we'll need to fill in
+  // their prototypes
+  for (auto &Function : Binary->Functions()) {
+    auto &CFG = Oracle.getLocalFunction(Function.Entry()).CFG;
+    dbg << "Registering indirect call sites of " << Function.Entry().toString()
+        << "\n";
+    for (efa::BasicBlock &Block : CFG) {
+      Block.dump();
+      for (auto &Edge : Block.Successors()) {
+        if (auto *Call = dyn_cast<CallEdge>(Edge.get())) {
+          if (Call->isIndirect()) {
+            dbg << "Registering " << Function.Entry().toString() << " "
+                << Block.ID().toString() << "\n";
+            Oracle.registerCallSite(Function.Entry(),
+                                    Block.ID(),
+                                    FunctionSummary(),
+                                    Call->IsTailCall());
+          }
+        }
+      }
+    }
+  }
 }
 
 void DetectABI::analyzeABI() {
+  revng_log(Log, "Running ABI analyses");
+  LoggerIndent<> Indent(Log);
+
   llvm::Task Task(2, "analyzeABI");
   std::map<MetaAddress, std::unique_ptr<OutlinedFunction>> Functions;
 
@@ -433,6 +459,7 @@ void DetectABI::analyzeABI() {
   }
 
   // Push this into analyzeFunction
+  // WIP: rename not only reads
   OpaqueRegisterUser RegisterReader(&M);
 
   // TODO: this really needs to become a monotone framework
@@ -442,9 +469,18 @@ void DetectABI::analyzeABI() {
   for (model::Function &Function : Binary->Functions())
     ToAnalyze.insert(&Function);
 
+  // Change the oracle default prototype to have no arguments nor return values
+  {
+    auto NewDefault = Oracle.getDefault().clone();
+    NewDefault.ABIResults.ArgumentsRegisters = {};
+    NewDefault.ABIResults.ReturnValuesRegisters = {};
+    Oracle.setDefault(std::move(NewDefault));
+  }
+
   unsigned Runs = 0;
   while (not ToAnalyze.empty()) {
     model::Function &Function = *ToAnalyze.pop();
+    revng_log(Log, "Analyzing " << Function.Entry().toString());
     FixedPointTask.advance(Function.name());
     OutlinedFunction &OutlinedFunction = *Functions.at(Function.Entry());
     Changes Changes = analyzeFunctionABI(Function,
@@ -452,12 +488,16 @@ void DetectABI::analyzeABI() {
                                          RegisterReader);
 
     if (Changes.Function) {
+      revng_log(Log, "The function has changed, re-enqueing all callers:");
+      LoggerIndent<> Indent(Log);
       // The prototype of the function we analyzed has changed, reanalyze
       // callers
       auto &FunctionNode = BasicBlockNodeMap[GCBI.getBlockAt(Function.Entry())];
       for (auto &CallerNode : FunctionNode->predecessors()) {
-        if (CallerNode->Address.isValid())
+        if (CallerNode->Address.isValid()) {
+          revng_log(Log, CallerNode->Address.toString());
           ToAnalyze.insert(&Binary->Functions().at(CallerNode->Address));
+        }
       }
     }
 
@@ -465,6 +505,7 @@ void DetectABI::analyzeABI() {
     // information
     for (const MetaAddress &ToReanalyze : Changes.Callees) {
       revng_assert(ToReanalyze.isValid());
+      revng_log(Log, "Re-enqueing callee " << ToReanalyze.toString());
       ToAnalyze.insert(&Binary->Functions().at(ToReanalyze));
     }
   }
@@ -473,6 +514,8 @@ void DetectABI::analyzeABI() {
 Changes DetectABI::analyzeFunctionABI(const model::Function &Function,
                                       OutlinedFunction &OutlinedFunction,
                                       OpaqueRegisterUser &RegisterReader) {
+  revng_log(Log, "Analyzing the ABI of " << Function.Entry().toString());
+
   //
   // Enrich all the call sites
   //
@@ -488,7 +531,7 @@ Changes DetectABI::analyzeFunctionABI(const model::Function &Function,
     }
   }
 
-  //
+  IRBuilder<> Builder(M.getContext());
   for (auto &[Call, IsPreHook] : Hooks) {
     auto CallerBlock = BasicBlockID::fromValue(Call->getArgOperand(0));
     auto CalleeAddress = MetaAddress::fromValue(Call->getArgOperand(1));
@@ -500,28 +543,29 @@ Changes DetectABI::analyzeFunctionABI(const model::Function &Function,
                                            CalleeSymbol);
     auto &ABIResults = Summary->ABIResults;
 
-    IRBuilder<> Builder(M.getContext());
+    auto *BB = Call->getParent();
     if (IsPreHook) {
       Builder.SetInsertPoint(Call);
       for (auto *CSV : ABIResults.ArgumentsRegisters) {
         // Inject a virtual read of the arguments of the callee
-
-        // Note: injecting this is detrimental for RAOFC, it prevents it from
-        //       detecting an argument of a call site. However, this is not a
-        //       problem, since we already marked the current register as an
-        //       argument of the call site, and we only add (never remove)
-        //       registers to the set of arguments.
-        // TODO: we should also do this for return values of the function
         // TODO: drop const_cast. Unfortunately it requires a significant
         //       refactoring.
         RegisterReader.read(Builder, const_cast<GlobalVariable *>(CSV));
       }
 
       // Ensure the precall_hook is the first instruction of the block
-      Call->getParent()->splitBasicBlockBefore(Call);
+      BB->splitBasicBlockBefore(Call);
     } else {
       // Ensure the postcall_hook is the last instruction of the block
-      Call->getParent()->splitBasicBlockBefore(Call->getNextNode());
+      BB->splitBasicBlockBefore(Call->getNextNode());
+
+      Builder.SetInsertPoint(BB, BB->getFirstInsertionPt());
+      for (auto *CSV : ABIResults.ReturnValuesRegisters) {
+        // Inject a virtual write to the return values of the callee
+        // TODO: drop const_cast. Unfortunately it requires a significant
+        //       refactoring.
+        RegisterReader.write(Builder, const_cast<GlobalVariable *>(CSV));
+      }
     }
   }
 
@@ -712,6 +756,7 @@ void DetectABI::propagatePrototypes() {
   }
 }
 
+// WIP: drop?
 void DetectABI::propagatePrototypesInFunction(model::Function &Function) {
   const MetaAddress &Entry = Function.Entry();
 
@@ -912,6 +957,7 @@ DetectABI::computePreservedRegisters(const CSVSet &ClobberedRegisters) const {
   return Result;
 }
 
+// WIP: rename, we no longer touch SP
 static void suppressCSAndSPRegisters(RUAResults &ABIResults,
                                      const CSVSet &CalleeSavedRegs) {
 
@@ -930,6 +976,20 @@ static void suppressCSAndSPRegisters(RUAResults &ABIResults,
       ABIResults.CallSites[K].ReturnValuesRegisters.erase(Reg);
     }
   }
+}
+
+template<typename T, typename F>
+static auto zeroOrOne(const T &Range, const F &Predicate)
+  -> decltype(&*Range.begin()) {
+  decltype(&*Range.begin()) Result = nullptr;
+  for (auto &E : Range) {
+    if (Predicate(E)) {
+      revng_assert(not Result);
+      Result = &E;
+    }
+  }
+
+  return Result;
 }
 
 Changes DetectABI::runAnalyses(MetaAddress EntryAddress,
@@ -959,6 +1019,7 @@ Changes DetectABI::runAnalyses(MetaAddress EntryAddress,
   auto ActualCalleeSavedRegs = llvm::set_intersection(CalleeSavedRegs,
                                                       WrittenRegisters);
 
+  // WIP: drop
   // Union between effective callee-saved registers and SP
   ActualCalleeSavedRegs.insert(GCBI.spReg());
 
@@ -975,6 +1036,7 @@ Changes DetectABI::runAnalyses(MetaAddress EntryAddress,
   Changes.Function = Old != Summary.ABIResults;
 
   for (auto &[BlockID, CallSite] : ABIResults.CallSites) {
+    // WIP: why?
     if (BlockID.isInlined())
       continue;
 
@@ -982,14 +1044,31 @@ Changes DetectABI::runAnalyses(MetaAddress EntryAddress,
 
     // TODO: eventually we'll want to add arguments/return values to dynamic
     //       functions too
+    FunctionSummary *Summary = nullptr;
     if (Callee.isValid()) {
-      auto &CalleeSummary = Oracle.getLocalFunction(Callee);
+      Summary = &Oracle.getLocalFunction(Callee);
+      revng_assert(Summary != nullptr);
+    } else {
+      dbg << "Updating:\n" << EntryAddress.toString() << "\n";
+      dbg << BlockID.toString() << "\n";
+      Summary = Oracle.getCallSiteImpl(EntryAddress, BlockID).first;
+    }
+
+    // WIP: are longjmps calls? Do we want to collect prototype for them?
+    //      Right now, they are in the IR, but we do not register them as call
+    //      sites in the Oracle.
+    if (Summary != nullptr) {
+      bool Changed = false;
+      RUAResults &ToAdjust = Summary->ABIResults;
 
       for (auto *CSV : CallSite.ArgumentsRegisters)
-        CalleeSummary.ABIResults.ArgumentsRegisters.insert(CSV);
+        Changed = Changed or ToAdjust.ArgumentsRegisters.insert(CSV).second;
 
       for (auto *CSV : CallSite.ReturnValuesRegisters)
-        CalleeSummary.ABIResults.ReturnValuesRegisters.insert(CSV);
+        Changed = Changed or ToAdjust.ReturnValuesRegisters.insert(CSV).second;
+
+      if (Changed and Callee.isValid())
+        Changes.Callees.insert(Callee);
     }
   }
 

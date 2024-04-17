@@ -182,9 +182,18 @@ public:
     return DynamicFunctions.at(Name.str());
   }
 
-private:
+  // WIP: rename
   std::pair<const FunctionSummary *, bool>
   getCallSiteImpl(MetaAddress Function, BasicBlockID CallSite) const {
+    auto It = CallSites.find({ Function, CallSite });
+    if (It == CallSites.end())
+      return { nullptr, false };
+    else
+      return { &It->second.first, It->second.second };
+  }
+
+  std::pair<FunctionSummary *, bool> getCallSiteImpl(MetaAddress Function,
+                                                     BasicBlockID CallSite) {
     auto It = CallSites.find({ Function, CallSite });
     if (It == CallSites.end())
       return { nullptr, false };
