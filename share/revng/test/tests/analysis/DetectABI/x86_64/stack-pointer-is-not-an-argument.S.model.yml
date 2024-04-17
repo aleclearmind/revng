@@ -1,10 +1,8 @@
 ---
 Functions:
-  - OriginalName:    function
-    Prototype:       "/Types/1814-RawFunctionType"
+  - OriginalName: function
+    Prototype: "/Types/1814-RawFunctionType"
 Types:
-  - ID:              1814
-    Kind:            RawFunctionType
-    # WIP: no rsp
-    Arguments:       []
-...
+  - ID: 1814
+    Kind: RawFunctionType
+    $Arguments: []

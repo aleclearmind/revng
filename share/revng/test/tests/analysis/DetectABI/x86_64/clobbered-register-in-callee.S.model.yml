@@ -1,20 +1,16 @@
 ---
 Functions:
-  - OriginalName:    callee
-    Prototype:       "/Types/1814-RawFunctionType"
-  - OriginalName:    caller
-    Prototype:       "/Types/1815-RawFunctionType"
+  - OriginalName: callee
+    Prototype: "/Types/1814-RawFunctionType"
+  - OriginalName: caller
+    Prototype: "/Types/1815-RawFunctionType"
 Types:
-  - ID:              1814
-    Kind:            RawFunctionType
-    # WIP: not testing what it looks like
+  - ID: 1814
+    Kind: RawFunctionType
     # WIP: shouldn't we have all the others?
-    PreservedRegisters: []
+    $PreservedRegisters: []
     FinalStackOffset: 8
-  - ID:              1815
-    Kind:            RawFunctionType
-    # WIP: not testing what it looks like
-    Arguments:       []
-    # WIP: not testing what it looks like
-    ReturnValues:    []
-...
+  - ID: 1815
+    Kind: RawFunctionType
+    $Arguments: []
+    $ReturnValues: []

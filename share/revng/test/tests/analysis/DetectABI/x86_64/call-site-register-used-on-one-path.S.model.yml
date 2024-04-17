@@ -1,11 +1,9 @@
 ---
 Functions:
-  - OriginalName:    function
+  - OriginalName: function
     CallSitePrototypes:
-      - Prototype:       "/Types/1815-RawFunctionType"
+      - Prototype: "/Types/1815-RawFunctionType"
 Types:
-  - ID:              1815
-    Kind:            RawFunctionType
-    # WIP: this is not checking for emptiness!
-    Arguments: []
-...
+  - ID: 1815
+    Kind: RawFunctionType
+    $Arguments: []

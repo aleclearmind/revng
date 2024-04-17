@@ -1,11 +1,10 @@
 ---
 Functions:
-  - OriginalName:    function
+  - OriginalName: function
     CallSitePrototypes:
-      - Prototype:       "/Types/1815-RawFunctionType"
+      - Prototype: "/Types/1815-RawFunctionType"
 Types:
-  - ID:              1815
-    Kind:            RawFunctionType
+  - ID: 1815
+    Kind: RawFunctionType
     ReturnValues:
-      - Location:        rax_x86_64
-...
+      - Location: rax_x86_64

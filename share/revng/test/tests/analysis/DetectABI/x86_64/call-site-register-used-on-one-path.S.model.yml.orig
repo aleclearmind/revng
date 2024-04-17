@@ -6,5 +6,9 @@ Functions:
 Types:
   - ID: 1815
     Kind: RawFunctionType
-    Arguments:
-      - Location: rdi_x86_64
+<<<<<<< HEAD
+    # WIP: this is not checking for emptiness!
+    Arguments: []
+=======
+    $Arguments: []
+>>>>>>> 16de3f97b (tmp)

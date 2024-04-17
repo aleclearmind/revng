@@ -1,10 +1,9 @@
 ---
 Functions:
-  - OriginalName:    function
-    Prototype:       "/Types/1814-RawFunctionType"
+  - OriginalName: function
+    Prototype: "/Types/1814-RawFunctionType"
 Types:
-  - ID:              1814
-    Kind:            RawFunctionType
+  - ID: 1814
+    Kind: RawFunctionType
     ReturnValues:
-      - Location:        rdi_x86_64
-...
+      - Location: rdi_x86_64
