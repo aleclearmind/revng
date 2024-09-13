@@ -141,6 +141,8 @@ static void compileModuleRunImpl(const Context &Ctx,
   auto Permissions = cantFail(errorOrToExpected(fs::getPermissions(*Path)));
   Permissions = Permissions | fs::owner_exe;
   fs::setPermissions(*TargetBinary.path(), Permissions);
+
+  // WIP: commit
 }
 
 void CompileModule::run(const ExecutionContext &Ctx,

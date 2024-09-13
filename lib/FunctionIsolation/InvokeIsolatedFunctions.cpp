@@ -220,5 +220,7 @@ bool InvokeIsolatedFunctionsPass::runOnModule(Module &M) {
   InvokeIsolatedFunctions TheFunction(Binary, M.getFunction("root"), GCBI);
   TheFunction.run();
 
+  // WIP: commit
+
   return true;
 }

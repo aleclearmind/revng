@@ -54,6 +54,7 @@ void ProcessAssembly::run(pipeline::ExecutionContext &Context,
     const auto &Func = *ModelFunctionIterator;
     auto Disassembled = Helper.disassemble(Func, Metadata, BinaryView, *Model);
     Output.insert_or_assign(Func.Entry(), serializeToString(Disassembled));
+    // WIP: commit per function
   }
 }
 
@@ -82,6 +83,7 @@ void YieldAssembly::run(pipeline::ExecutionContext &Context,
     R += yield::ptml::functionAssembly(B, **MaybeFunction, *Model);
     R = B.getTag(ptml::tags::Div, std::move(R)).serialize();
     Output.insert_or_assign((*MaybeFunction)->Entry(), std::move(R));
+    // WIP: commit per function
   }
 }
 

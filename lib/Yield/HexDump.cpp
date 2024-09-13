@@ -286,6 +286,8 @@ public:
                   CFGMap,
                   SourceBinary,
                   Output.getOrCreatePath());
+
+    // WIP: commit
   }
 
   llvm::Error checkPrecondition(const pipeline::Context &Ctx) const {

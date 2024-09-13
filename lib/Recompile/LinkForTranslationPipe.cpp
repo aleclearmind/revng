@@ -29,6 +29,7 @@ void LinkForTranslation::run(const ExecutionContext &Ctx,
                      *InputBinary.path(),
                      *ObjectFile.path(),
                      OutputBinary.getOrCreatePath());
+  // WIP: commit
 }
 
 static RegisterPipe<LinkForTranslation> E5;

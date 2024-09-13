@@ -42,6 +42,7 @@ void ProcessCallGraph::run(pipeline::ExecutionContext &Context,
     return;
 
   OutputFile.emplace(Metadata, *Model);
+  // WIP: commit
 }
 
 void YieldCallGraph::run(pipeline::ExecutionContext &Context,
@@ -56,6 +57,7 @@ void YieldCallGraph::run(pipeline::ExecutionContext &Context,
 
   // Print the result.
   Output.setContent(std::move(Result));
+  // WIP: commit
 }
 
 void YieldCallGraphSlice::run(pipeline::ExecutionContext &Context,
@@ -82,6 +84,7 @@ void YieldCallGraphSlice::run(pipeline::ExecutionContext &Context,
                                                        SlicePoint,
                                                        *Relations.get(),
                                                        *Model));
+    // WIP: commit per function
   }
 }
 
