@@ -22,13 +22,14 @@
 #include "revng/Pipeline/ContainerSet.h"
 #include "revng/Pipeline/Contract.h"
 #include "revng/Pipeline/ExecutionContext.h"
+#include "revng/Pipeline/Global.h"
 #include "revng/Pipeline/Invokable.h"
 #include "revng/Pipeline/Target.h"
 #include "revng/Support/Debug.h"
 
 namespace pipeline {
 
-/// rappresents the requested (not expected, which means that it contains only
+/// Represents the requested (not expected, which means that it contains only
 /// the targets the user care about, not all those that will be generated as a
 /// side effect) input and output of a given invocation of a pipe.
 class PipeExecutionEntry {
@@ -165,17 +166,28 @@ public:
   getRequirements(const Context &Ctx,
                   const ContainerToTargetsMap &Target) const override {
     const auto &Contracts = Invokable.getPipe().getContract();
-    auto Requirements = Target;
-    for (const auto &Contract : llvm::reverse(Contracts))
-      Requirements = Contract
-                       .deduceRequirements(Ctx,
-                                           Requirements,
-                                           Invokable
-                                             .getRunningContainersNames());
-    auto TargetsProducedByMe = Target;
-    TargetsProducedByMe.erase(Requirements);
+    auto Input = Target;
 
-    return PipeExecutionEntry(TargetsProducedByMe, Requirements);
+    for (const auto &Contract : llvm::reverse(Contracts)) {
+      Input = Contract
+                .deduceRequirements(Ctx,
+                                    Input,
+                                    Invokable.getRunningContainersNames());
+    }
+
+    auto Output = Target;
+    // Output.erase(Input);
+
+#if 0
+    dbg << "getRequirements(\"" << this->getName() << "\")\n";
+    dbg << "Input:\n";
+    Input.dump();
+
+    dbg << "Output:\n";
+    Output.dump();
+#endif
+
+    return PipeExecutionEntry(Output, Input);
   }
 
   ContainerToTargetsMap
@@ -250,8 +262,10 @@ public:
 // a extra wrapper that carries along the invalidation metadata too.
 struct PipeWrapper {
 
+  // WIP: outline me
   class InvalidationMetadata {
   private:
+    // WIP: this not a cache
     llvm::StringMap<PathTargetBimap> PathCache;
 
   public:
@@ -301,14 +315,37 @@ struct PipeWrapper {
     const llvm::StringMap<PathTargetBimap> &getPathCache() const {
       return PathCache;
     }
+
     llvm::StringMap<PathTargetBimap> &getPathCache() { return PathCache; }
 
     const PathTargetBimap &getPathCache(llvm::StringRef GlobalName) const {
       revng_assert(PathCache.find(GlobalName) != PathCache.end());
       return PathCache.find(GlobalName)->second;
     }
+
     PathTargetBimap &getPathCache(llvm::StringRef GlobalName) {
       return PathCache[GlobalName];
+    }
+
+    void dump(const pipeline::Context &Context,
+              unsigned Indentation = 0) const {
+      for (const auto &[GlobalName, InvalidationData] : PathCache) {
+        indent(dbg, Indentation);
+        dbg << "Global " << GlobalName.str() << ":\n";
+
+        for (const auto &[Path, Targets] : PathCache.find(GlobalName)->second) {
+          indent(dbg, Indentation + 1);
+
+          dbg << llvm::cantFail(Context.getGlobals().get(GlobalName))
+                   ->serializePath(Path)
+                   .value_or("(unavailable)")
+              << ":\n";
+
+          for (const TargetInContainer &Target : Targets) {
+            Target.dump(dbg, Indentation + 2);
+          }
+        }
+      }
     }
   };
 
@@ -317,6 +354,7 @@ public:
   WrapperType Pipe;
   InvalidationMetadata InvalidationMetadata;
 
+public:
   template<typename PipeType>
   static PipeWrapper
   make(PipeType Pipe, std::vector<std::string> RunningContainersNames) {

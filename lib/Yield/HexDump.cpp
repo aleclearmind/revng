@@ -287,7 +287,7 @@ public:
                   SourceBinary,
                   Output.getOrCreatePath());
 
-    // WIP: commit
+    Ctx.commitUniqueTarget(Output);
   }
 
   llvm::Error checkPrecondition(const pipeline::Context &Ctx) const {

@@ -28,7 +28,7 @@ public:
   std::array<pipeline::ContractGroup, 1> getContract() const {
     return { pipeline::ContractGroup(kinds::Root, 0, kinds::Object, 1) };
   }
-  void run(const pipeline::ExecutionContext &,
+  void run(pipeline::ExecutionContext &,
            pipeline::LLVMContainer &ModuleContainer,
            ObjectFileContainer &TargetBinary);
 
@@ -50,7 +50,7 @@ public:
     return { pipeline::ContractGroup({ RootPart, IsolatedPart }) };
   }
 
-  void run(const pipeline::ExecutionContext &,
+  void run(pipeline::ExecutionContext &,
            pipeline::LLVMContainer &ModuleContainer,
            ObjectFileContainer &TargetBinary);
 

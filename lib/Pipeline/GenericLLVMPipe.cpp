@@ -61,7 +61,7 @@ using RP = RegisterPass<T>;
 char UpdateContract::ID = '_';
 
 static RP<UpdateContract>
-  X("advance-contract", "Advances pipeline contracts", true, false);
+  X("advance-contract", "Advance pipeline contracts", true, false);
 
 void GenericLLVMPipe::run(ExecutionContext &Ctx, LLVMContainer &Container) {
   llvm::legacy::PassManager Manager;

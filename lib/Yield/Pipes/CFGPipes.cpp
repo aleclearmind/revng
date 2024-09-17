@@ -23,16 +23,28 @@ void YieldControlFlow::run(pipeline::ExecutionContext &Context,
   const auto &Model = revng::getModelFromContext(Context);
   ptml::PTMLBuilder B;
 
-  for (auto [Address, S] : Input) {
-    auto MaybeFunction = TupleTree<yield::Function>::deserialize(S);
+  for (pipeline::Target &Target :
+       Context.getCurrentRequestedTargets()[Output.name()]) {
+    if (&Target.getKind() != &revng::kinds::FunctionControlFlowGraphSVG)
+      continue;
+
+    Context.getContext().pushReadFields();
+
+    auto Address = MetaAddress::fromString(Target.getPathComponents()[0]);
+
+    auto MaybeFunction = TupleTree<
+      yield::Function>::deserialize(Input.at(Address));
+
     revng_assert(MaybeFunction && MaybeFunction->verify());
-    revng_assert((*MaybeFunction)->Entry() == std::get<0>(Address));
+    revng_assert((*MaybeFunction)->Entry() == Address);
 
     Output.insert_or_assign((*MaybeFunction)->Entry(),
                             yield::svg::controlFlowGraph(B,
                                                          **MaybeFunction,
                                                          *Model));
-    // WIP: commit per function
+
+    Context.commit(Target, Output.name());
+    Context.getContext().popReadFields();
   }
 }
 

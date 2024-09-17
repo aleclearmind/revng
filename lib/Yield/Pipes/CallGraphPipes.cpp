@@ -42,7 +42,8 @@ void ProcessCallGraph::run(pipeline::ExecutionContext &Context,
     return;
 
   OutputFile.emplace(Metadata, *Model);
-  // WIP: commit
+
+  Context.commitUniqueTarget(OutputFile);
 }
 
 void YieldCallGraph::run(pipeline::ExecutionContext &Context,
@@ -57,7 +58,8 @@ void YieldCallGraph::run(pipeline::ExecutionContext &Context,
 
   // Print the result.
   Output.setContent(std::move(Result));
-  // WIP: commit
+
+  Context.commitUniqueTarget(Output);
 }
 
 void YieldCallGraphSlice::run(pipeline::ExecutionContext &Context,
@@ -71,8 +73,16 @@ void YieldCallGraphSlice::run(pipeline::ExecutionContext &Context,
   PTMLBuilder B;
 
   ControlFlowGraphCache Cache(CFGMap);
-  for (const auto &[Key, _] : CFGMap) {
-    MetaAddress Address = std::get<0>(Key);
+
+  for (pipeline::Target &Target :
+       Context.getCurrentRequestedTargets()[Output.name()]) {
+    if (&Target.getKind() != &revng::kinds::CallGraphSliceSVG)
+      continue;
+
+    Context.getContext().pushReadFields();
+
+    auto Address = MetaAddress::fromString(Target.getPathComponents()[0]);
+
     auto &Metadata = Cache.getControlFlowGraph(Address);
     revng_assert(llvm::is_contained(Model->Functions(), Metadata.Entry()));
 
@@ -84,7 +94,9 @@ void YieldCallGraphSlice::run(pipeline::ExecutionContext &Context,
                                                        SlicePoint,
                                                        *Relations.get(),
                                                        *Model));
-    // WIP: commit per function
+
+    Context.commit(Target, Output.name());
+    Context.getContext().popReadFields();
   }
 }
 

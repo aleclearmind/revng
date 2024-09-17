@@ -78,6 +78,7 @@ int Target::operator<=>(const Target &Other) const {
   return 0;
 }
 
+// WIP: toString
 std::string Target::serialize() const {
   std::string ToReturn;
 
@@ -95,6 +96,7 @@ std::string Target::serialize() const {
   return ToReturn;
 }
 
+// WIP: fromString
 llvm::Expected<Target> Target::deserialize(Context &Ctx,
                                            llvm::StringRef String) {
   if (String.contains('*'))

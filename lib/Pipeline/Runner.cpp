@@ -491,8 +491,6 @@ void Runner::getDiffInvalidations(const GlobalTupleTreeDiff &Diff,
                 "Computing invalidations in container " << Container.getKey());
       LoggerIndent<> II(Log);
 
-      // WIP: drop this. Instead, add an assertion (not necessarily here) to
-      //      abort if you read some model, but didn't commit anything.
       // Look for targets that are not recorded in the invalidation map and mark
       // them to be deleted
       const TargetsList &ExistingTargets = Container.second->enumerate();
@@ -503,6 +501,9 @@ void Runner::getDiffInvalidations(const GlobalTupleTreeDiff &Diff,
           continue;
 
         revng_log(Log, "Invalidating " << Target.serialize());
+        // Step.dump();
+        // WIP
+        // revng_abort();
         StepInvalidations[Container.first()].push_back(Target);
       }
     }

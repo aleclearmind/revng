@@ -102,12 +102,14 @@ public:
   }
 
 public:
+  // WIP: rename to toString
   std::string serialize() const;
 
   void dump() const debug_function { dump(dbg); }
 
   template<typename OStream>
   void dump(OStream &OS, size_t Indentation = 0) const debug_function {
+    // WIP: use toString
     indent(OS, Indentation);
     OS << '/';
 

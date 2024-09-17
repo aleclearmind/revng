@@ -14,6 +14,8 @@
 #include "revng/Model/IRHelpers.h"
 #include "revng/Pipeline/AllRegistries.h"
 #include "revng/Pipeline/Contract.h"
+#include "revng/Pipeline/Kind.h"
+#include "revng/Pipeline/LLVMContainer.h"
 #include "revng/Pipes/Kinds.h"
 #include "revng/Pipes/RootKind.h"
 #include "revng/Pipes/TaggedFunctionKind.h"
@@ -220,7 +222,12 @@ bool InvokeIsolatedFunctionsPass::runOnModule(Module &M) {
   InvokeIsolatedFunctions TheFunction(Binary, M.getFunction("root"), GCBI);
   TheFunction.run();
 
-  // WIP: commit
+  // Commit
+  using namespace pipeline;
+  auto &Analysis = getAnalysis<LoadExecutionContextPass>();
+  ExecutionContext *ExecutionContext = Analysis.get();
+  auto ContainerName = Analysis.getContainerName();
+  ExecutionContext->commit(Target(revng::kinds::IsolatedRoot), ContainerName);
 
   return true;
 }

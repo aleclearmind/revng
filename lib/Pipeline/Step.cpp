@@ -285,6 +285,14 @@ ContainerSet Step::run(ContainerSet &&Input,
   for (const auto &[Pipe, Info] : llvm::zip(Pipes, ExecutionInfos)) {
     T.advance(Pipe.Pipe->getName(), false);
     explainExecutedPipe(*Pipe.Pipe);
+
+#if 0
+    dbg << "Expected input:\n";
+    Info.Input.dump();
+    dbg << "Expected output:\n";
+    Info.Output.dump();
+#endif
+
     ExecutionContext Context(*Ctx, &Pipe, Info.Output);
 
     Pipe.Pipe->deduceResults(*Ctx, Context.getCurrentRequestedTargets());

@@ -141,20 +141,20 @@ static void compileModuleRunImpl(const Context &Ctx,
   auto Permissions = cantFail(errorOrToExpected(fs::getPermissions(*Path)));
   Permissions = Permissions | fs::owner_exe;
   fs::setPermissions(*TargetBinary.path(), Permissions);
-
-  // WIP: commit
 }
 
-void CompileModule::run(const ExecutionContext &Ctx,
+void CompileModule::run(ExecutionContext &Ctx,
                         LLVMContainer &Module,
                         ObjectFileContainer &TargetBinary) {
   compileModuleRunImpl(Ctx.getContext(), Module, TargetBinary);
+  Ctx.commitUniqueTarget(TargetBinary);
 }
 
-void CompileIsolatedModule::run(const ExecutionContext &Ctx,
+void CompileIsolatedModule::run(ExecutionContext &Ctx,
                                 LLVMContainer &Module,
                                 ObjectFileContainer &TargetBinary) {
   compileModuleRunImpl(Ctx.getContext(), Module, TargetBinary);
+  Ctx.commitUniqueTarget(TargetBinary);
 }
 
 static RegisterPipe<CompileModule> E2;

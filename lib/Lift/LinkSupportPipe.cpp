@@ -91,7 +91,6 @@ void revng::pipes::LinkSupport::run(const ExecutionContext &Ctx,
                                           std::move(Module));
 
   revng_assert(not Failed);
-  // WIP: commit
 }
 
 static pipeline::RegisterPipe<LinkSupport> E4;

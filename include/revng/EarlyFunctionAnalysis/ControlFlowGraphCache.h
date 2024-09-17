@@ -54,6 +54,7 @@ concept ControlFlowGraphCacheTraits = requires {
   } -> std::same_as<MetaAddress>;
 };
 
+// WIP: this is not a cache
 /// The BasicControlFlowGraphCache is implemented as a class template customised
 /// via a traits class in order to enable reuse for both LLVM IR and MLIR.
 template<ControlFlowGraphCacheTraits Traits>

@@ -9,6 +9,8 @@
 
 #include "revng/Support/Assert.h"
 
+// WIP: drop me
+
 struct TaggedFunctionPass : public llvm::ModulePass {
 private:
   FunctionTags::Tag *InputTag;
