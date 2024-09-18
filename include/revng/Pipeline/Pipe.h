@@ -91,6 +91,15 @@ public:
   template<typename PipeType>
   using ImplType = PipeWrapperImpl<PipeType>;
 
+private:
+  const bool ReadsGlobals = true;
+
+public:
+  PipeWrapperBase(bool ReadsGlobals) : ReadsGlobals(ReadsGlobals) {}
+
+public:
+  bool readsGlobals() const { return ReadsGlobals; }
+
 public:
   virtual PipeExecutionEntry
   getRequirements(const Context &Ctx,
@@ -129,14 +138,16 @@ private:
 public:
   PipeWrapperImpl(PipeType ActualPipe,
                   std::vector<std::string> RunningContainersNames) :
-    Invokable(std::move(ActualPipe), std::move(RunningContainersNames)) {}
+    PipeWrapperBase(PipeType::ReadsGlobals), Invokable(std::move(ActualPipe), std::move(RunningContainersNames)) {}
 
   PipeWrapperImpl(const PipeWrapperImpl &ActualPipe,
                   std::vector<std::string> RunningContainersNames) :
+    PipeWrapperBase(PipeType::ReadsGlobals),
     Invokable(ActualPipe.Invokable, std::move(RunningContainersNames)) {}
 
   PipeWrapperImpl(PipeWrapperImpl &&ActualPipe,
                   std::vector<std::string> RunningContainersNames) :
+    PipeWrapperBase(PipeType::ReadsGlobals),
     Invokable(std::move(ActualPipe.Invokable),
               std::move(RunningContainersNames)) {}
 

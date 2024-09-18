@@ -25,7 +25,8 @@ namespace revng::pipes {
 
 class CollectCFGPipe {
 public:
-  static constexpr const auto Name = "collect-cfg";
+  static constexpr auto Name = "collect-cfg";
+  static constexpr bool ReadsGlobals = true;
 
 public:
   std::array<pipeline::ContractGroup, 1> getContract() const {

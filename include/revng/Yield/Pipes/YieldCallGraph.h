@@ -19,6 +19,7 @@ namespace revng::pipes {
 class YieldCallGraph {
 public:
   static constexpr const auto Name = "yield-call-graph";
+  static constexpr bool ReadsGlobals = true;
 
 public:
   inline std::array<pipeline::ContractGroup, 1> getContract() const {

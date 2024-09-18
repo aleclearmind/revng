@@ -20,6 +20,7 @@ namespace revng::pipes {
 class LinkSupport {
 public:
   static constexpr auto Name = "link-support";
+  static constexpr auto ReadsGlobals = false;
 
   std::array<pipeline::ContractGroup, 1> getContract() const {
     return { pipeline::ContractGroup(kinds::Root,

@@ -587,6 +587,7 @@ static Register X("promote-csvs", "Promote CSVs Pass", true, true);
 
 struct PromoteCSVsPipe {
   static constexpr auto Name = "promote-csvs";
+  static constexpr auto ReadsGlobals = true;
 
   std::vector<pipeline::ContractGroup> getContract() const {
     using namespace pipeline;

@@ -53,6 +53,7 @@ using CallGraphSliceSVGStringMap = FunctionStringMap<&kinds::CallGraphSliceSVG,
 class ProcessCallGraph {
 public:
   static constexpr const auto Name = "process-call-graph";
+  static constexpr bool ReadsGlobals = true;
 
 public:
   inline std::array<pipeline::ContractGroup, 1> getContract() const {

@@ -48,7 +48,8 @@ using FunctionControlFlowStringMap = FunctionStringMap<
 
 class YieldControlFlow {
 public:
-  static constexpr const auto Name = "yield-cfg";
+  static constexpr auto Name = "yield-cfg";
+  static constexpr bool ReadsGlobals = true;
 
 public:
   inline std::array<pipeline::ContractGroup, 1> getContract() const {

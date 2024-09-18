@@ -305,6 +305,7 @@ private:
   Map Status;
 
 public:
+  bool operator==(const ContainerToTargetsMap &) const = default;
   iterator begin() { return Status.begin(); }
   iterator end() { return Status.end(); }
   const_iterator begin() const { return Status.begin(); }

@@ -488,6 +488,7 @@ void EnforceABI::getAnalysisUsage(llvm::AnalysisUsage &AU) {
 
 struct EnforceABIPipe {
   static constexpr auto Name = "enforce-abi";
+  static constexpr auto ReadsGlobals = true;
 
   std::vector<pipeline::ContractGroup> getContract() const {
     using namespace revng;

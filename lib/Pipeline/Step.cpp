@@ -299,6 +299,7 @@ ContainerSet Step::run(ContainerSet &&Input,
 
     cantFail(Pipe.Pipe->run(Context, Input));
     llvm::cantFail(Input.verify());
+    Context.verify();
   }
 
   T.advance("Merging back", true);

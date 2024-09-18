@@ -25,6 +25,7 @@ template<typename ContainerType, const char *TheName>
 class PopulateTargetListContainer {
 public:
   static constexpr auto Name = TheName;
+  static constexpr auto ReadsGlobals = true;
 
   std::array<pipeline::ContractGroup, 1> getContract() const {
     using namespace pipeline;

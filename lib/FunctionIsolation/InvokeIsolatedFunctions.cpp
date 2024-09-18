@@ -31,6 +31,7 @@ static Register
 
 struct InvokeIsolatedPipe {
   static constexpr auto Name = "invoke-isolated-functions";
+  static constexpr auto ReadsGlobals = true;
 
   std::vector<pipeline::ContractGroup> getContract() const {
     using namespace revng::kinds;

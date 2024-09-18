@@ -36,6 +36,7 @@ static Register X("drop-root", "Drop Root Pass", true, true);
 
 struct DropRootPipe {
   static constexpr auto Name = "drop-root";
+  static constexpr auto ReadsGlobals = false;
 
   std::vector<pipeline::ContractGroup> getContract() const {
     using namespace pipeline;

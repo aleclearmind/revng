@@ -141,6 +141,8 @@ private:
 
 public:
   static constexpr auto Name = "generic-llvm-pipe";
+  static constexpr auto ReadsGlobals = false;
+
   template<typename... T>
   explicit GenericLLVMPipe(T... Pass) {
     (addPass(std::move(Pass)), ...);
@@ -219,6 +221,8 @@ public:
 class O2Pipe {
 public:
   static constexpr auto Name = "o2";
+  static constexpr auto ReadsGlobals = false;
+
   std::vector<ContractGroup> getContract() const { return {}; }
 
   void registerPasses(llvm::legacy::PassManager &Manager);

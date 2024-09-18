@@ -237,6 +237,7 @@ class TestPipe {
 
 public:
   static constexpr auto Name = "test";
+  static constexpr bool ReadsGlobals = true;
 
   std::vector<ContractGroup> getContract() const {
     return {
@@ -545,6 +546,8 @@ class FineGrainPipe {
 
 public:
   static constexpr auto Name = "fine-grain";
+  static constexpr bool ReadsGlobals = true;
+
   std::vector<ContractGroup> getContract() const {
     return {
       ContractGroup(RootKind, 0, FunctionKind, 1, InputPreservation::Preserve)
@@ -577,6 +580,8 @@ class CopyPipe {
 
 public:
   static constexpr auto Name = "copy";
+  static constexpr bool ReadsGlobals = true;
+
   std::vector<ContractGroup> getContract() const {
     return { ContractGroup(FunctionKind,
                            0,
@@ -707,6 +712,7 @@ static llvm::RegisterPass<IdentityPass> X2("identity-pass", "identity-pass");
 
 struct LLVMPassFunctionCreator {
   static constexpr auto Name = "function-creator";
+  static constexpr bool ReadsGlobals = true;
 
   std::vector<ContractGroup> getContract() const {
     return { ContractGroup(RootKind, 0, FunctionKind) };
@@ -719,6 +725,7 @@ struct LLVMPassFunctionCreator {
 
 struct LLVMPassFunctionIdentity {
   static constexpr auto Name = "identity";
+  static constexpr bool ReadsGlobals = true;
 
   std::vector<ContractGroup> getContract() const {
     return { ContractGroup(FunctionKind) };

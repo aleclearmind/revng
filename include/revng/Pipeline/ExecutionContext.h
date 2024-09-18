@@ -67,6 +67,7 @@ private:
   Context *TheContext = nullptr;
   PipeWrapper *Pipe = nullptr;
   ContainerToTargetsMap Requested;
+  ContainerToTargetsMap Committed;
   // false when running on a analysis
   bool RunningOnPipe = true;
 
@@ -88,6 +89,10 @@ public:
   }
 
   ContainerToTargetsMap &getCurrentRequestedTargets() { return Requested; }
+
+public:
+  /// Verifies all the requested targets have been committed
+  void verify() const;
 
 public:
   const Context &getContext() const { return *TheContext; }

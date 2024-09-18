@@ -203,6 +203,7 @@ bool AttachDebugInfo::runOnModule(llvm::Module &M) {
 
 struct AttachDebugInfoToIsolatedPipe {
   static constexpr auto Name = "attach-debug-info-to-isolated";
+  static constexpr auto ReadsGlobals = false;
 
   std::vector<pipeline::ContractGroup> getContract() const {
     using namespace revng;
@@ -238,6 +239,7 @@ static pipeline::RegisterPipe<AttachDebugInfoToIsolatedPipe> Y1;
 
 struct AttachDebugInfoToABIEnforcedPipe {
   static constexpr auto Name = "attach-debug-info-to-abi-enforced";
+  static constexpr auto ReadsGlobals = false;
 
   std::vector<pipeline::ContractGroup> getContract() const {
     using namespace revng;
