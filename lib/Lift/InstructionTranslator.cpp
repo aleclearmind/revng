@@ -451,11 +451,11 @@ void IT::finalizeNewPCMarkers() {
     eraseFromParent(Call);
 }
 
-SmallSet<unsigned, 1> IT::preprocess(LibTcgInstructionList InstructionList) {
+SmallSet<unsigned, 1> IT::preprocess(const LibTcgTranslationBlock &TB) {
   SmallSet<unsigned, 1> Result;
 
-  for (unsigned I = 0; I < InstructionList.instruction_count; ++I) {
-    LibTcgInstruction &Instruction = InstructionList.list[I];
+  for (unsigned I = 0; I < TB.instruction_count; ++I) {
+    LibTcgInstruction &Instruction = TB.list[I];
     switch (Instruction.opcode) {
     case LIBTCG_op_mov_i32:
     case LIBTCG_op_mov_i64:
@@ -474,8 +474,8 @@ SmallSet<unsigned, 1> IT::preprocess(LibTcgInstructionList InstructionList) {
     if (strcmp("btarget", Temp->name) != 0)
       continue;
 
-    for (unsigned J = I + 1; J < InstructionList.instruction_count; ++J) {
-      LibTcgOpcode Opcode = InstructionList.list[J].opcode;
+    for (unsigned J = I + 1; J < TB.instruction_count; ++J) {
+      LibTcgOpcode Opcode = TB.list[J].opcode;
       if (Opcode == LIBTCG_op_insn_start)
         Result.insert(J);
     }

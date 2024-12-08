@@ -117,7 +117,7 @@ public:
   /// Check if the translated code contains a delay slot and return a blacklist
   /// of the LIBTCG_op_insn_start instructions that have to be
   /// ignored to merge the delay slot into the branch instruction.
-  llvm::SmallSet<unsigned, 1> preprocess(LibTcgInstructionList Instructions);
+  llvm::SmallSet<unsigned, 1> preprocess(const LibTcgTranslationBlock &TB);
 
   void registerDirectJumps();
 
