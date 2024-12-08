@@ -632,12 +632,15 @@ void CodeGenerator::translate(const LibTcgInterface &LibTcg,
       TcgAllowed->setInitializer(ConstantInt::get(Uint8Ty, 1));
   }
 
+  // Get libtcg architecture info such as env offset, important registers, etc.
+  LibTcgArchInfo ArchInfo = LibTcg.get_arch_info();
+
   // Prepare the helper modules by transforming the cpu_loop function and
   // running SROA
   T.advance("Prepare helpers module", true);
   legacy::PassManager CpuLoopPM;
   CpuLoopPM.add(new LoopInfoWrapperPass());
-  CpuLoopPM.add(new CpuLoopFunctionPass(LibTcg.exception_index));
+  CpuLoopPM.add(new CpuLoopFunctionPass(ArchInfo.exception_index));
   CpuLoopPM.add(createSROAPass());
   CpuLoopPM.run(*HelpersModule);
 
@@ -775,7 +778,7 @@ void CodeGenerator::translate(const LibTcgInterface &LibTcg,
       StructType::getTypeByName(TheModule->getContext(), "struct.ArchCPU");
   revng_assert(CPUStruct != nullptr);
   VariableManager Variables(*TheModule, TargetIsLittleEndian, CPUStruct,
-                            LibTcg.env_offset, LibTcg.env_ptr(LibTcgContext));
+                            ArchInfo.env_offset, LibTcg.env_ptr(LibTcgContext));
   auto CreateCPUStateAccessAnalysisPass = [&Variables]() {
     return new CPUStateAccessAnalysisPass(&Variables, true);
   };
@@ -799,20 +802,21 @@ void CodeGenerator::translate(const LibTcgInterface &LibTcg,
   //
   auto SP = model::Architecture::getStackPointer(Model->Architecture());
   std::string SPName = model::Register::getCSVName(SP).str();
-  GlobalVariable *SPReg = Variables.getByEnvOffset(LibTcg.sp, SPName).first;
+  GlobalVariable *SPReg = Variables.getByEnvOffset(ArchInfo.sp, SPName).first;
 
   using PCHOwner = std::unique_ptr<ProgramCounterHandler>;
-  auto Factory = [&Variables, &LibTcg](PCAffectingCSV::Values CSVID,
-                                       llvm::StringRef Name) -> GlobalVariable * {
+  auto Factory =
+    [&Variables, &ArchInfo](PCAffectingCSV::Values CSVID,
+                            llvm::StringRef Name) -> GlobalVariable * {
     intptr_t Offset = 0;
 
     switch (CSVID) {
     case PCAffectingCSV::PC:
-      Offset = LibTcg.pc;
+      Offset = ArchInfo.pc;
       break;
 
     case PCAffectingCSV::IsThumb:
-      Offset = LibTcg.is_thumb;
+      Offset = ArchInfo.is_thumb;
       break;
 
     default:
@@ -949,35 +953,36 @@ void CodeGenerator::translate(const LibTcgInterface &LibTcg,
       TranslateFlags |= LIBTCG_TRANSLATE_ARM_THUMB;
     }
 
-    auto NewInstructionList =
-      LibTcg.translate(LibTcgContext,
-                       CodeBuffer.data() + Offset,
-                       CodeBuffer.size() - Offset,
-                       VirtualAddress.address(),
-                       TranslateFlags);
+    const unsigned char *CodePtr = CodeBuffer.data() + Offset;
+    const size_t CodeSize = CodeBuffer.size() - Offset;
+    LibTcgTranslationBlock TB = LibTcg.translate_block(LibTcgContext,
+                                                       CodePtr,
+                                                       CodeSize,
+                                                       VirtualAddress.address(),
+                                                       TranslateFlags);
 
     // TODO: rename this type
-    const size_t ConsumedSize = NewInstructionList.size_in_bytes;
+    const size_t ConsumedSize = TB.size_in_bytes;
     revng_assert(ConsumedSize > 0);
 
     SmallSet<unsigned, 1> ToIgnore;
     // Handles writes to btarget, represents branching for microblaze/mips/cris
-    ToIgnore = Translator.preprocess(NewInstructionList);
+    ToIgnore = Translator.preprocess(TB);
 
     if (LibTcgLog.isEnabled()) {
       static std::array<char, 128> DumpBuf{0};
       LibTcgLog << "[Translation starting from "
                 << std::hex << VirtualAddress.address()
                 << "]" << DoLog;
-      for (size_t I = 0; I < NewInstructionList.instruction_count; ++I) {
-        LibTcg.dump_instruction_to_buffer(&NewInstructionList.list[I],
+      for (size_t I = 0; I < TB.instruction_count; ++I) {
+        LibTcg.dump_instruction_to_buffer(&TB.list[I],
                                           DumpBuf.data(),
                                           DumpBuf.size());
         LibTcgLog << DumpBuf.data() << DoLog;
       }
     }
 
-    Variables.newTranslationBlock(&NewInstructionList);
+    Variables.newTranslationBlock();
     MDNode *MDOriginalInstr = nullptr;
     bool StopTranslation = false;
 
@@ -985,7 +990,7 @@ void CodeGenerator::translate(const LibTcgInterface &LibTcg,
     MetaAddress NextPC = MetaAddress::invalid();
     MetaAddress EndPC = VirtualAddress + ConsumedSize;
 
-    const auto InstructionCount = NewInstructionList.instruction_count;
+    const auto InstructionCount = TB.instruction_count;
     using IT = InstructionTranslator;
     IT::TranslationResult Result;
 
@@ -995,13 +1000,13 @@ void CodeGenerator::translate(const LibTcgInterface &LibTcg,
     {
       LibTcgInstruction *NextInstruction = nullptr;
       for (unsigned K = 1; K < InstructionCount; K++) {
-        LibTcgInstruction *I = &NewInstructionList.list[K];
+        LibTcgInstruction *I = &TB.list[K];
         if (I->opcode == LIBTCG_op_insn_start && ToIgnore.count(K) == 0) {
           NextInstruction = I;
           break;
         }
       }
-      LibTcgInstruction *Instruction = &NewInstructionList.list[J];
+      LibTcgInstruction *Instruction = &TB.list[J];
       std::tie(Result, MDOriginalInstr, PC, NextPC) =
         Translator.newInstruction(Instruction, NextInstruction,
                                   VirtualAddress, EndPC, true);
@@ -1013,7 +1018,7 @@ void CodeGenerator::translate(const LibTcgInterface &LibTcg,
       if (ToIgnore.count(J) != 0)
         continue;
 
-      LibTcgInstruction *Instruction = &NewInstructionList.list[J];
+      LibTcgInstruction *Instruction = &TB.list[J];
       auto Opcode = Instruction->opcode;
 
       Blocks.clear();
@@ -1027,7 +1032,7 @@ void CodeGenerator::translate(const LibTcgInterface &LibTcg,
         // Find next instruction, if there is one
         LibTcgInstruction *NextInstruction = nullptr;
         for (unsigned K = J + 1; K < InstructionCount; K++) {
-          LibTcgInstruction *I = &NewInstructionList.list[K];
+          LibTcgInstruction *I = &TB.list[K];
           if (I->opcode == LIBTCG_op_insn_start && ToIgnore.count(K) == 0) {
             NextInstruction = I;
             break;
@@ -1066,7 +1071,7 @@ void CodeGenerator::translate(const LibTcgInterface &LibTcg,
       MDNode *MDLibTcgInstr = nullptr;
       if (RecordTCG) {
         static std::array<char, 128> DumpBuf{0};
-        LibTcg.dump_instruction_to_buffer(&NewInstructionList.list[J],
+        LibTcg.dump_instruction_to_buffer(&TB.list[J],
                                           DumpBuf.data(), DumpBuf.size());
 
         // Eh not very nice to strlen in construction of the StringRef,
@@ -1091,7 +1096,7 @@ void CodeGenerator::translate(const LibTcgInterface &LibTcg,
 
     TranslateTask.complete();
     TranslateTask.advance("Finalization", true);
-    LibTcg.instruction_list_destroy(LibTcgContext, NewInstructionList);
+    LibTcg.translation_block_destroy(LibTcgContext, TB);
 
     // We might have a leftover block, probably due to the block created after
     // the last call to exit_tb
