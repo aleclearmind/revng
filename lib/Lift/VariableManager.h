@@ -102,13 +102,17 @@ public:
   /// Note: A TB refers to a set of instructions that could be translated by
   ///       QEMU in one shot, and might encompass multiple LLVM basic blocks.
   ///
-  /// \param Instructions list of instructions returned by qemu for this TB
-  void newTranslationBlock(LibTcgInstructionList *Instructions);
+  void newTranslationBlock() {
+    TBTemporaries.clear();
+    newExtendedBasicBlock();
+  }
 
   /// Informs the VariableManager that a new Extended Basic Block (EBB) has
   /// begun. An EBB is a single entry, multiple exit region that fallst through
   /// conditional branches.
-  void newExtendedBasicBlock() { EBBTemporaries.clear(); }
+  void newExtendedBasicBlock() {
+    EBBTemporaries.clear();
+  }
 
   /// Returns true if the given variable is the env variable
   bool isEnv(llvm::Value *TheValue);
@@ -196,7 +200,6 @@ private:
   //   through condtitional branches, smaller than a TB. 
   TemporariesMap TBTemporaries;
   TemporariesMap EBBTemporaries;
-  LibTcgInstructionList *Instructions = nullptr;
 
   llvm::StructType *CPUStateType;
   const llvm::DataLayout *ModuleLayout;

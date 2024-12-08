@@ -422,12 +422,6 @@ void VariableManager::finalize() {
   Builder.CreateRetVoid();
 }
 
-void VariableManager::newTranslationBlock(LibTcgInstructionList *Instructions) {
-  TBTemporaries.clear();
-  this->Instructions = Instructions;
-  newExtendedBasicBlock();
-}
-
 bool VariableManager::isEnv(Value *TheValue) {
   auto *Load = dyn_cast<LoadInst>(TheValue);
   if (Load != nullptr)
@@ -520,9 +514,6 @@ VariableManager::getByCPUStateOffsetInternal(intptr_t Offset,
 
 std::pair<bool, Value *>
 VariableManager::getOrCreate(LibTcgArgument *Arg, bool Reading) {
-  revng_assert(Instructions != nullptr);
-
-  //PTCTemp *Temporary = ptc_temp_get(Instructions, TemporaryId);
   Type *VariableType = Arg->temp->type == LIBTCG_TYPE_I32 ?
                          AllocaBuilder.getInt32Ty() :
                          AllocaBuilder.getInt64Ty();
