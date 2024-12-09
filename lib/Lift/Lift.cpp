@@ -83,11 +83,14 @@ bool LiftPass::runOnModule(llvm::Module &M) {
     return EXIT_FAILURE;
   }
 
+  printf("TRYING TO LOAD %s\n", Paths.LibTcg.c_str());
+
   // Obtain the address of the libtcg_load entry point
   using LibTcgLoadFunc = LIBTCG_FUNC_TYPE(libtcg_load);
   void *LibTcgLoadSym = dlsym(LibraryHandle, "libtcg_load");
   auto LibTcgLoad = reinterpret_cast<LibTcgLoadFunc *>(LibTcgLoadSym);
   if (LibTcgLoad == nullptr) {
+    printf("failed\n");
     return EXIT_FAILURE;
   }
 
