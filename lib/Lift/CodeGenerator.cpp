@@ -632,6 +632,14 @@ void CodeGenerator::translate(const LibTcgInterface &LibTcg,
       TcgAllowed->setInitializer(ConstantInt::get(Uint8Ty, 1));
   }
 
+  //
+  // Create the libtcg context
+  //
+  // TODO(anjo): Move to Lift.cpp?
+  LibTcgDesc Desc = {};
+  auto *LibTcgContext = LibTcg.context_create(&Desc);
+  revng_assert(LibTcgContext != nullptr, "Failed to create libtcg context");
+
   // Get libtcg architecture info such as env offset, important registers, etc.
   LibTcgArchInfo ArchInfo = LibTcg.get_arch_info();
 
@@ -753,14 +761,6 @@ void CodeGenerator::translate(const LibTcgInterface &LibTcg,
     if (auto *F = TheModule->getFunction(FunctionName))
       if (not F->isDeclaration() and not F->isIntrinsic())
         F->setLinkage(GlobalValue::InternalLinkage);
-
-  //
-  // Create the libtcg context
-  //
-  // TODO(anjo): Move to Lift.cpp?
-  LibTcgDesc Desc = {};
-  auto *LibTcgContext = LibTcg.context_create(&Desc);
-  revng_assert(LibTcgContext != nullptr, "Failed to create libtcg context");
 
   //
   // Create the VariableManager
