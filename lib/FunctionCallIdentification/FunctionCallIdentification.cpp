@@ -6,6 +6,8 @@
 // This file is distributed under the MIT License. See LICENSE.md for details.
 //
 
+#pragma clang optimize off
+
 #include "revng/FunctionCallIdentification/FunctionCallIdentification.h"
 #include "revng/Support/Debug.h"
 #include "revng/Support/FunctionTags.h"
@@ -54,6 +56,9 @@ bool FunctionCallIdentification::runOnModule(llvm::Module &M) {
 
   // Collect function calls
   for (BasicBlock &BB : F) {
+
+    if (BB.getName() == "bb.0x40111b:Code_x86_64")
+      dbg << "HERE\n";
 
     if (BB.empty() or not GCBI.isTranslated(&BB))
       continue;

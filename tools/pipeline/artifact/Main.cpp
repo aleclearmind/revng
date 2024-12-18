@@ -5,6 +5,7 @@
 //
 
 #include <iostream>
+#include <memory>
 
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
@@ -221,3 +222,96 @@ int main(int argc, char *argv[]) {
 
   return EXIT_SUCCESS;
 }
+
+#if 0
+class Operand {
+protected:
+  SmallVector<Operand *, 2> Operands;
+
+public:
+  virtual ~Operand() = default;
+
+public:
+  Operand *replaceArgumentWith(unsigned ArgumentIndex, const Operand &NewOperand) {
+    // WIP
+  }
+};
+
+class UnknownOperand : public Operand {
+public:
+  static UnknownOperand *get(SmallVector<Operand *, 2> &&Operands) {
+    return new UnknownOperand();
+  }
+
+};
+
+class AnyOfOperand : public Operand {
+public:
+  static AnyOfOperand *get(SmallVector<Operand *, 2> &&Operands) {
+    auto Result = new AnyOfOperand();
+    Result->Operands = Operands;
+    return Result;
+  }
+};
+
+class ArgumentOperand : public Operand {
+private:
+  unsigned Index = 0;
+
+public:
+  static ArgumentOperand *get(uint64_t Index) {
+    auto Result = new ArgumentOperand();
+    Result->Index = Index;
+    return Result;
+  }
+
+};
+
+class ConstantOperand : public Operand {
+private:
+  uint64_t Value = 0;
+
+public:
+  static ConstantOperand *get(uint64_t Value) {
+    auto Result = new ConstantOperand();
+    Result->Value = Value;
+    return Result;
+  }
+
+};
+
+class BinaryOperatorOperand : public Operand {
+public:
+  enum Operator {
+    Invalid,
+    Add,
+    Sub,
+    Mul
+  };
+
+private:
+  Operator Type = Invalid;
+
+public:
+  static BinaryOperatorOperand *getAdd(Operand *FirstOperand,
+                                       Operand *SecondOperand) {
+    auto Result = new BinaryOperatorOperand();
+    Result->Type = Add;
+    Result->Operands.emplace_back(FirstOperand);
+    Result->Operands.emplace_back(SecondOperand);
+    return Result;
+  }
+
+};
+
+class FunctionResult {
+  SmallVector<Operand *, 2> Read;
+  SmallVector<Operand *, 2> Written;
+  Operand *Result = nullptr;
+}
+
+inline void wip() {
+  BinaryOperatorOperand::getAdd(ArgumentOperand::get(2), ConstantOperand::get(3));
+}
+
+#endif

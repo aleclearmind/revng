@@ -6,6 +6,8 @@
 // This file is distributed under the MIT License. See LICENSE.md for details.
 //
 
+#pragma clang optimize off
+
 #include <cstdint>
 #include <fstream>
 #include <queue>
@@ -703,6 +705,10 @@ IT::translate(LibTcgInstruction *Instr, MetaAddress PC, MetaAddress NextPC) {
     } else {
       // If we're writing somewhere an immediate, register it for exploration
       if (auto *Constant = dyn_cast<ConstantInt>(Store->getValueOperand())) {
+
+        if (Constant->getLimitedValue() == 0x00401120)
+          dbg << "HERE2\n";
+
         MetaAddress Address = JumpTargets.fromPC(Constant->getLimitedValue());
         if (Address.isValid() and PC != Address and JumpTargets.isPC(Address)
             and not JumpTargets.hasJT(Address)) {
@@ -869,7 +875,22 @@ IT::translateOpcode(LibTcgOpcode Opcode,
       if (BSwapFunction != nullptr)
         Value = Builder.CreateCall(BSwapFunction, Value);
 
-      Builder.CreateAlignedStore(Value, Pointer, MaybeAlign(Alignment));
+      auto *Store = Builder.CreateAlignedStore(Value, Pointer, MaybeAlign(Alignment));
+
+#if 1
+      // If we're writing somewhere an immediate, register it for exploration
+      if (auto *Constant = dyn_cast<ConstantInt>(Store->getValueOperand())) {
+
+        if (Constant->getLimitedValue() == 0x00401120)
+          dbg << "HERE2\n";
+
+        MetaAddress Address = JumpTargets.fromPC(Constant->getLimitedValue());
+        if (Address.isValid() and JumpTargets.isPC(Address)
+            and not JumpTargets.hasJT(Address)) {
+          JumpTargets.registerSimpleLiteral(Address);
+        }
+      }
+#endif
 
       return v{};
     } else {

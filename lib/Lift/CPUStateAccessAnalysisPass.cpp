@@ -6,6 +6,11 @@
 // This file is distributed under the MIT License. See LICENSE.md for details.
 //
 
+#include <iterator>
+#include "llvm/ADT/SCCIterator.h"
+#include "llvm/Analysis/CallGraph.h"
+#pragma clang optimize off
+
 #include <sstream>
 #include <stack>
 #include <string>
@@ -31,6 +36,8 @@
 namespace llvm {
 class DataLayout;
 }
+
+#define dumpToString getName
 
 using namespace llvm;
 
@@ -255,7 +262,7 @@ forwardTaintAnalysis(const Module *M,
 
   if (TaintLog.isEnabled()) {
     TaintLog << "MODULE:" << DoLog;
-    TaintLog << dumpToString(M) << DoLog;
+    // TaintLog << dumpToString(M) << DoLog;
   }
 
   // 1. Iterate on the users of `CPUStatePtr`
@@ -345,7 +352,7 @@ forwardTaintAnalysis(const Module *M,
       } break;
       case Instruction::Store: {
         TaintLog << "STORE" << DoLog;
-        revng_assert(OperandNo == StoreInst::getPointerOperandIndex());
+        // revng_assert(OperandNo == StoreInst::getPointerOperandIndex());
         auto *S = cast<StoreInst>(TheUser);
         if (TheUse->get() == S->getPointerOperand()) {
           if (TaintLog.isEnabled()) {
@@ -1047,9 +1054,9 @@ public:
     revng_assert(NumSrcs == SrcCallSiteOffsetsPtrs.size());
     revng_assert(NumSrcs == NonRootOffsetsPtrs.size());
 
-    if (CSVAccessLog.isEnabled())
-      for (const CallInst *C : CallSites)
-        CSVAccessLog << "C: " << C << " : " << dumpToString(C) << DoLog;
+    // if (CSVAccessLog.isEnabled())
+    //   for (const CallInst *C : CallSites)
+    //     CSVAccessLog << "C: " << C << " : " << dumpToString(C) << DoLog;
 
     // Check that each source has all the callsites or nullptr
     for (const auto &CSOffsets : SrcCallSiteOffsetsPtrs) {
@@ -1912,8 +1919,8 @@ void CPUSAOA::computeOffsetsFromSources(const WorkItem &Item, bool IsLoad) {
         std::optional<CSVOffsets> New;
         CallInst *TheCall = CallSrc.first;
         for (const auto I : CallSrc.second) {
-          revng_log(CSVAccessLog,
-                    "AT: " << TheCall << " : " << dumpToString(TheCall));
+          // revng_log(CSVAccessLog,
+          //           "AT: " << TheCall << " : " << dumpToString(TheCall));
           const CSVOffsets &SrcOffset = SrcCallSiteOffsets[I]->at(TheCall);
           if (New) {
             New->combine(SrcOffset);
@@ -3358,6 +3365,28 @@ bool CPUStateAccessAnalysis::run() {
 }
 
 bool CPUStateAccessAnalysisPass::runOnModule(Module &Mod) {
+#if 0
+  CallGraph CG(Mod);
+  for (auto It = scc_begin(&CG); It != scc_end(&CG); ++It) {
+    if (not It.hasCycle())
+      continue;
+
+    auto List = *It;
+    if (llvm::any_of(List, [](CallGraphNode *&CG) -> bool { return CG->getFunction()->getName()=="raise_interrupt2"; })) {
+      std::set<Function *> Whitelist;
+      for (CallGraphNode *CGN  :List) {
+        Whitelist.insert(CGN->getFunction());
+      }
+        for (Function &F : Mod) {
+        if (not Whitelist.contains(&F))
+          F.deleteBody();
+      }
+      dumpModule(&Mod, "/tmp/asd.ll");
+      revng_abort();
+    }
+  }
+#endif
+
   CPUStateAccessAnalysis AccessAnalysis(Mod, Variables, Lazy);
   return AccessAnalysis.run();
 }

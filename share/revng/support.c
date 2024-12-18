@@ -17,6 +17,7 @@
 #include <sys/ucontext.h>
 #include <unistd.h>
 #include <unwind.h>
+#include <errno.h>
 
 #include "revng/Runtime/PlainMetaAddress.h"
 
@@ -227,7 +228,15 @@ void *g_realloc(void *mem, size_t size) {
   return realloc(mem, size);
 }
 
+void *g_realloc_n(void *mem, size_t n, size_t size) {
+  return realloc(mem, n * size);
+}
+
 void *g_malloc0_n(size_t n, size_t size) {
+  return calloc(n, size);
+}
+
+void *g_malloc_n(size_t n, size_t size) {
   return calloc(n, size);
 }
 
@@ -249,11 +258,53 @@ void *g_try_malloc(size_t n_bytes) {
     return malloc(n_bytes);
 }
 
+void *g_try_malloc_n(size_t n, size_t size) {
+  if (n == 0 || size == 0)
+    return NULL;
+  else
+    return calloc(n, size);
+}
+
 void g_free(void *memory) {
   if (memory == NULL)
     return;
   else
     return free(memory);
+}
+
+// WIP
+size_t g_strlcpy(char *dest, const char *src, size_t dest_size) {
+  char *d = dest;
+  const char *s = src;
+  size_t n = dest_size;
+
+  /* Copy as many bytes as will fit */
+  if (n != 0 && --n != 0)
+    do
+      {
+        char c = *s++;
+
+        *d++ = c;
+        if (c == 0)
+          break;
+      }
+    while (--n != 0);
+
+  /* If not enough room in dest, add NUL and traverse rest of src */
+  if (n == 0)
+    {
+      if (dest_size != 0)
+        *d = 0;
+      while (*s++)
+        ;
+    }
+
+  return s - src - 1;  /* count does not include NUL */
+}
+
+int memfd_create(const char *name, unsigned int flags) {
+  errno = ENOSYS;
+  return -1;
 }
 
 void g_assertion_message_expr(const char *domain,
@@ -379,11 +430,12 @@ void init_tracing(void) {
 void on_exit_syscall(void) {
 }
 
-void newpc(uint64_t pc,
+void newpc(const char *pc,
            uint64_t instruction_size,
            uint32_t is_first,
            uint8_t *vars,
            ...) {
+  // fprintf(stderr, "%s\n", pc);
 }
 
 #endif
@@ -468,7 +520,8 @@ int main(int argc, char *argv[]) {
   unsigned long fs_value;
   int result = arch_prctl(ARCH_GET_FS, &fs_value);
   assert(result == 0);
-  set_register(REGISTER_FS, fs_value);
+  // WIP
+  // set_register(REGISTER_FS, fs_value);
 #endif
 
   // Run the translated program

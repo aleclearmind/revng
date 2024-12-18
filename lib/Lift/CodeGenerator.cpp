@@ -18,6 +18,7 @@
 
 #include "llvm/ADT/PostOrderIterator.h"
 #include "llvm/ADT/SmallSet.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/Analysis/LoopInfo.h"
 #include "llvm/ExecutionEngine/RuntimeDyld.h"
 #include "llvm/IR/CFG.h"
@@ -379,16 +380,18 @@ bool CpuLoopFunctionPass::runOnModule(Module &M) {
 }
 
 class CpuLoopExitPass : public llvm::ModulePass {
+private:
+  VariableManager *VM = nullptr;
+  intptr_t ExceptionIndexOffset = 0;
+
 public:
   static char ID;
 
   CpuLoopExitPass() : llvm::ModulePass(ID), VM(nullptr) {}
-  CpuLoopExitPass(VariableManager *VM) : llvm::ModulePass(ID), VM(VM) {}
+  CpuLoopExitPass(VariableManager *VM, intptr_t ExceptionIndexOffset) : llvm::ModulePass(ID), VM(VM), ExceptionIndexOffset(ExceptionIndexOffset) {}
 
   bool runOnModule(llvm::Module &M) override;
 
-private:
-  VariableManager *VM = nullptr;
 };
 
 char CpuLoopExitPass::ID = 0;
@@ -425,17 +428,8 @@ static ReturnInst *createRet(Instruction *Position) {
     return ReturnInst::Create(F->getParent()->getContext(), Null, Position);
   } else if (ReturnType->isStructTy()) {
     auto *StructTy = cast<StructType>(ReturnType);
-    if (StructTy->getNumElements() == 2) {
-      bool Valid = true;
-      for (auto *Ty : StructTy->elements())
-        if (!Ty->isIntegerTy(64))
-          Valid = false;
-
-      if (Valid) {
-        auto *Null = ConstantAggregateZero::get(StructTy);
-        return ReturnInst::Create(F->getParent()->getContext(), Null, Position);
-      }
-    }
+    auto *Null = ConstantAggregateZero::get(StructTy);
+    return ReturnInst::Create(F->getParent()->getContext(), Null, Position);
   }
 
   revng_abort("Return type not supported");
@@ -454,11 +448,29 @@ static ReturnInst *createRet(Instruction *Position) {
 /// the call.
 bool CpuLoopExitPass::runOnModule(llvm::Module &M) {
   LLVMContext &Context = M.getContext();
-  Function *CpuLoopExitRestore = M.getFunction("cpu_loop_exit_restore");
-
 
   // Replace uses of cpu_loop_exit_restore with cpu_loop_exit, some targets
   // e.g. mips only use cpu_loop_exit_restore
+  Function *CpuLoopExitRestore = M.getFunction("cpu_loop_exit_restore");
+  if (CpuLoopExitRestore != nullptr) {
+    Function *CpuLoopExit = cast<Function>(M.getOrInsertFunction("cpu_loop_exit", Type::getVoidTy(Context), CpuLoopExitRestore->getArg(0)->getType()).getCallee());
+    SmallVector<Value *, 8> ToErase;
+    for (User *U : CpuLoopExitRestore->users()) {
+      auto *Call = cast<CallInst>(U);
+      Value *CpuStateArg = Call->getArgOperand(0);
+      IRBuilder<> Builder(Call);
+      Value *NewCall = Builder.CreateCall(CpuLoopExit, {CpuStateArg});
+      Call->replaceAllUsesWith(NewCall);
+      ToErase.push_back(Call);
+    }
+
+    for (auto &V : ToErase) {
+      eraseFromParent(V);
+    }
+  }
+
+  // WIP
+  CpuLoopExitRestore = M.getFunction("cpu_loop_exit_noexc");
   if (CpuLoopExitRestore != nullptr) {
     Function *CpuLoopExit = cast<Function>(M.getOrInsertFunction("cpu_loop_exit", Type::getVoidTy(Context), CpuLoopExitRestore->getArg(0)->getType()).getCallee());
     SmallVector<Value *, 8> ToErase;
@@ -495,17 +507,33 @@ bool CpuLoopExitPass::runOnModule(llvm::Module &M) {
                                               ConstantInt::getFalse(BoolType),
                                               StringRef("cpu_loop_exiting"));
 
-  Function *CpuLoop = M.getFunction("cpu_loop");
+  // WIP: rename to HandleException
+  Function *CpuLoop = M.getFunction("handle_exception");
   revng_assert(CpuLoop != nullptr);
 
-  for (User *U : CpuLoopExit->users()) {
+  IRBuilder<> Builder(Context);
+
+  for (User *U : to_vector(CpuLoopExit->users())) {
     auto *Call = cast<CallInst>(U);
     revng_assert(Call->getCalledFunction() == CpuLoopExit);
 
-    // Call cpu_loop
+    Builder.SetInsertPoint(Call);
+
     auto *EnvPtr = VM->cpuStateToEnv(Call->getArgOperand(0), Call);
 
-    auto *CallCpuLoop = CallInst::Create(CpuLoop, { EnvPtr }, "", Call);
+    // Load exception_index
+    Type *TargetType = CpuLoop->getArg(1)->getType();
+    Type *IntPtrTy = Builder.getIntPtrTy(M.getDataLayout());
+    Value *CPUIntPtr = Builder.CreatePtrToInt(Call->getArgOperand(0), IntPtrTy);
+    using CI = ConstantInt;
+    auto Offset = CI::get(IntPtrTy, ExceptionIndexOffset);
+    Value *ExceptionIndexIntPtr = Builder.CreateAdd(CPUIntPtr, Offset);
+    Value *ExceptionIndexPtr = Builder.CreateIntToPtr(ExceptionIndexIntPtr,
+                                                      TargetType->getPointerTo());
+    Value *ExceptionIndex = Builder.CreateLoad(TargetType, ExceptionIndexPtr);
+
+    // Call handle_exception
+    auto *CallCpuLoop = CallInst::Create(CpuLoop, { EnvPtr, ExceptionIndex }, "", Call);
 
     // In recent versions of LLVM you can no longer inject a CallInst in a
     // Function with debug location if the call itself has not a debug location
@@ -648,7 +676,7 @@ void CodeGenerator::translate(const LibTcgInterface &LibTcg,
   T.advance("Prepare helpers module", true);
   legacy::PassManager CpuLoopPM;
   CpuLoopPM.add(new LoopInfoWrapperPass());
-  CpuLoopPM.add(new CpuLoopFunctionPass(ArchInfo.exception_index));
+  // CpuLoopPM.add(new CpuLoopFunctionPass(ArchInfo.exception_index));
   CpuLoopPM.add(createSROAPass());
   CpuLoopPM.run(*HelpersModule);
 
@@ -685,11 +713,22 @@ void CodeGenerator::translate(const LibTcgInterface &LibTcg,
                                                     "qemu_log",
                                                     "qemu_loglevel_mask",
                                                     "qemu_thread_atexit_init",
+                                                    "_nocheck__trace_target_mprotect",
+                                                    "_nocheck__trace_target_munmap",
+                                                    "_nocheck__trace_target_mmap",
+                                                    "_nocheck__trace_target_mmap_complete",
+                                                    "_nocheck__trace_user_host_signal",
+                                                    "_nocheck__trace_signal_do_sigaction_guest",
+                                                    "_nocheck__trace_signal_do_sigaction_host",
                                                     "_nocheck__trace_user_do_sigreturn",
                                                     "_nocheck__trace_user_do_rt_sigreturn",
                                                     "_nocheck__trace_user_do_rt_sigreturn",
+                                                    "_nocheck__trace_user_do_rt_sigreturn",
                                                     "_nocheck__trace_user_s390x_restore_sigregs",
-                                                    "start_exclusive");
+                                                    "start_exclusive",
+                                                    "qemu_plugin_vcpu_syscall",
+                                                    "qemu_plugin_vcpu_syscall_ret",
+                                                    "tb_flush");
   for (auto Name : NoOpFunctionNames)
     replaceFunctionWithRet(HelpersModule->getFunction(Name), 0);
 
@@ -710,7 +749,8 @@ void CodeGenerator::translate(const LibTcgInterface &LibTcg,
                                                      // ARM cpu_loop
                                                      "cpu_abort",
                                                      "do_arm_semihosting",
-                                                     "EmulateAll");
+                                                     "EmulateAll",
+                                                     "do_fork");
   for (auto Name : AbortFunctionNames) {
     Function *TheFunction = HelpersModule->getFunction(Name);
     if (TheFunction != nullptr) {
@@ -785,7 +825,7 @@ void CodeGenerator::translate(const LibTcgInterface &LibTcg,
 
   {
     legacy::PassManager PM;
-    PM.add(new CpuLoopExitPass(&Variables));
+    PM.add(new CpuLoopExitPass(&Variables, ArchInfo.exception_index));
     PM.run(*TheModule);
   }
 
@@ -926,17 +966,7 @@ void CodeGenerator::translate(const LibTcgInterface &LibTcg,
   MetaAddress CodeBufferStartAddress = VirtualAddress;
 
   while (Entry != nullptr) {
-    size_t Offset = VirtualAddress.address()
-                    - CodeBufferStartAddress.address();
-
-    // Make sure VirtualAddress points to an executable segment, otherwise
-    // look up a new one.
-    if (Offset >= CodeBuffer.size()) {
-      auto MaybeData = RawBinary.getFromAddressOn(VirtualAddress);
-      revng_assert(MaybeData);
-      CodeBuffer = *MaybeData;
-      CodeBufferStartAddress = VirtualAddress;
-    }
+    CodeBuffer = RawBinary.getFromAddressOn(VirtualAddress).value();
 
     LiftTask.advance(VirtualAddress.toString(), true);
 
@@ -953,11 +983,9 @@ void CodeGenerator::translate(const LibTcgInterface &LibTcg,
       TranslateFlags |= LIBTCG_TRANSLATE_ARM_THUMB;
     }
 
-    const unsigned char *CodePtr = CodeBuffer.data() + Offset;
-    const size_t CodeSize = CodeBuffer.size() - Offset;
     LibTcgTranslationBlock TB = LibTcg.translate_block(LibTcgContext,
-                                                       CodePtr,
-                                                       CodeSize,
+                                                       CodeBuffer.data(),
+                                                       CodeBuffer.size(),
                                                        VirtualAddress.address(),
                                                        TranslateFlags);
 
