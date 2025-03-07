@@ -296,6 +296,7 @@ private:
   std::map<Function *, StackAccessRedirector> StackArgumentsRedirectors;
   std::vector<Instruction *> ToPushALAP;
 
+  llvm::Type *TargetPtrSizedInteger = nullptr;
   llvm::Type *PtrSizedInteger = nullptr;
   llvm::Type *OpaquePointerType = nullptr;
   OpaqueFunctionsPool<FunctionTags::TypePair> AddressOfPool;
@@ -317,6 +318,7 @@ public:
                                          .getGCBI()
                                          .spReg()
                                          ->getValueType())),
+    TargetPtrSizedInteger(M.getDataLayout().getIntPtrType(M.getContext())),
     PtrSizedInteger(getPointerSizedInteger(M.getContext(), Binary)),
     OpaquePointerType(PointerType::get(M.getContext(), 0)),
     AddressOfPool(FunctionTags::AddressOf.getPool(M)),
@@ -344,12 +346,12 @@ public:
                                          .getGCBI()
                                          .spReg()
                                          ->getValueType())),
+    TargetPtrSizedInteger(M.getDataLayout().getIntPtrType(M.getContext())),
     PtrSizedInteger(getPointerSizedInteger(M.getContext(), Binary)),
     OpaquePointerType(PointerType::get(M.getContext(), 0)),
     AddressOfPool(FunctionTags::AddressOf.getPool(M)),
     VariableBuilder(LVB<true>::makeLegacyStackBuilder(Binary,
                                                       M,
-                                                      StackPointerType,
                                                       AddressOfPool)) {
 
     revng_assert(SSACS != nullptr);
@@ -409,20 +411,6 @@ private:
                                                 AddressOfFunctionType,
                                                 "AddressOf");
     return B.CreateCall(AddressOfFunction, { ModelTypeString, V });
-  }
-
-  /// Creates an alloca in \a F with type \a T.
-  /// Allocas created with this method are intended to be inserted temporarily,
-  /// and subsequently optimized away from LLVM optimizations.
-  /// There's no need to tag them with model::Types in any way.
-  std::pair<AllocaInst *, PtrToIntInst *>
-  createAllocaWithPtrToInt(Function *F, Type *T) const {
-    IRBuilder<> B(M.getContext());
-    B.SetInsertPointPastAllocas(F);
-    AllocaInst *Alloca = B.CreateAlloca(T);
-    PtrToIntInst *
-      PtrToInt = cast<PtrToIntInst>(B.CreatePtrToInt(Alloca, StackPointerType));
-    return { Alloca, PtrToInt };
   }
 
   void upgradeDynamicFunctions() {
@@ -645,10 +633,10 @@ private:
         }
 
         if (ModelArgument.Stack) {
-          const auto &[Alloca,
-                       PtrToInt] = createAllocaWithPtrToInt(NewFunction,
-                                                            NewArgument
-                                                              .getType());
+          auto Pair = VariableBuilder
+                        .createAllocaWithPtrToInt(NewFunction,
+                                                  NewArgument.getType());
+          auto [Alloca, PtrToInt] = Pair;
           B.CreateStore(&NewArgument, Alloca);
           ToRecordSpan = PtrToInt;
         }
@@ -975,12 +963,10 @@ private:
           revng_assert(MaybeStackSize);
 
           // Create an alloca
-          const auto
-            &[Alloca,
-              PtrToInt] = createAllocaWithPtrToInt(Caller,
-                                                   B.getIntNTy(ModelArgument
-                                                                 .Stack->Size
-                                                               * 8));
+          auto *StackSpanType = B.getIntNTy(ModelArgument.Stack->Size * 8);
+          auto Pair = VariableBuilder.createAllocaWithPtrToInt(Caller,
+                                                               StackSpanType);
+          auto [Alloca, PtrToInt] = Pair;
 
           // Record its portion of the stack for redirection
           Redirector.recordSpan(*ModelArgument.Stack, PtrToInt);
@@ -1033,17 +1019,15 @@ private:
                         "size at call site unknown");
           }
         } else if (ModelArgument.Stack) {
-          revng_assert(ModelArgument.Stack->Size <= 128 / 8);
           unsigned OldSize = ModelArgument.Stack->Size;
+          revng_assert(OldSize <= 128 / 8);
           revng_assert(MaybeStackSize);
 
           // Create an alloca
-          const auto
-            &[Alloca,
-              PtrToInt] = createAllocaWithPtrToInt(Caller,
-                                                   B.getIntNTy(ModelArgument
-                                                                 .Stack->Size
-                                                               * 8));
+          IntegerType *StackSpanType = B.getIntNTy(OldSize * 8);
+          auto Pair = VariableBuilder.createAllocaWithPtrToInt(Caller,
+                                                               StackSpanType);
+          auto [Alloca, PtrToInt] = Pair;
 
           // Record its portion of the stack for redirection
           Redirector.recordSpan(*ModelArgument.Stack, PtrToInt);
