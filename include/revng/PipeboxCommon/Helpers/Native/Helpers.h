@@ -6,16 +6,16 @@
 
 #include "llvm/ADT/ArrayRef.h"
 
+#include "revng/Dunno.h"
 #include "revng/PipeboxCommon/Helpers/Native/Container.h"
 
 namespace revng::pypeline::helpers {
 
-// Helper function to unpack containers from an ArrayRef.
-// To be used in conjunction with PipeRunner or AnalysisRunner
 template<typename C, size_t I>
-inline C &
-extractContainerFromList(llvm::ArrayRef<native::Container *> Containers) {
-  return *static_cast<C *>(Containers[I]->get());
-}
+struct ExtractContainerFromList<C, I, std::vector<native::Container *> &> {
+  static C &get(std::vector<native::Container *> &Containers) {
+    return *static_cast<C *>(Containers[I]->get());
+  }
+};
 
 } // namespace revng::pypeline::helpers

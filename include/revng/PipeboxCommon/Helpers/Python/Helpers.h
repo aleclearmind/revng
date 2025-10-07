@@ -10,17 +10,20 @@
 
 #include "llvm/ADT/StringRef.h"
 
+#include "revng/Dunno.h"
 #include "revng/PipeboxCommon/Common.h"
 #include "revng/PipeboxCommon/ObjectID.h"
 
 namespace revng::pypeline::helpers {
 
+template<typename C, size_t I>
+struct ExtractContainerFromList<C, I, nanobind::list &> {
+  static C &get(nanobind::list &Containers) {
+    return *nanobind::cast<C *>(Containers[I]);
+  }
+};
 // Helper function to unpack containers from a nanobind::list.
 // To be used in conjunction with PipeRunner or AnalysisRunner
-template<typename C, size_t I>
-inline C &extractContainerFromList(nanobind::list &Containers) {
-  return *nanobind::cast<C *>(Containers[I]);
-}
 
 namespace python {
 

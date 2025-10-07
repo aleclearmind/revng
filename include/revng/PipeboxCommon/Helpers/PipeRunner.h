@@ -6,6 +6,7 @@
 
 #include <utility>
 
+#include "revng/Dunno.h"
 #include "revng/PipeboxCommon/Common.h"
 #include "revng/PipeboxCommon/Concepts.h"
 #include "revng/PipeboxCommon/Model.h"
@@ -32,10 +33,11 @@ inline ObjectDependencies runPipe(T &Pipe,
                     Incoming,
                     Outgoing,
                     Configuration,
-                    extractContainerFromList<
+                    ExtractContainerFromList<
                       std::tuple_element_t<ContainerIndexes,
                                            typename Traits::ContainerTypes>,
-                      ContainerIndexes>(Containers)...);
+                      ContainerIndexes,
+                      ListType &>::get(Containers)...);
   });
   return Runner(std::make_index_sequence<Traits::ContainerCount>());
 }

@@ -8,6 +8,7 @@
 
 #include "llvm/Support/Error.h"
 
+#include "revng/Dunno.h"
 #include "revng/PipeboxCommon/Common.h"
 #include "revng/PipeboxCommon/Concepts.h"
 #include "revng/PipeboxCommon/Model.h"
@@ -34,9 +35,10 @@ inline llvm::Error runAnalysis(T &Analysis,
     return (Analysis.*RunMethod)(TheModel,
                                  Incoming,
                                  Configuration,
-                                 extractContainerFromList<
+                                 ExtractContainerFromList<
                                    std::remove_reference_t<ContainersT>,
-                                   ContainerIndexes>(Containers)...);
+                                   ContainerIndexes,
+                                   ListType &>::get(Containers)...);
   });
   return Runner(std::make_integer_sequence<size_t, sizeof...(ContainersT)>());
 }
