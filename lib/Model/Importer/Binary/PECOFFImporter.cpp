@@ -109,8 +109,9 @@ Error PECOFFImporter::parseSectionsHeaders() {
     const object::coff_section *CoffRef = *MaybeSection;
 
     MetaAddress Start = ImageBase + u64(CoffRef->VirtualAddress);
-    Segment Segment({ Start.toGeneric(), u64(CoffRef->VirtualSize) });
+    Segment Segment(Start.toGeneric());
 
+    Segment.VirtualSize() = u64(CoffRef->VirtualSize);
     Segment.StartOffset() = CoffRef->PointerToRawData;
 
     // VirtualSize might be larger than SizeOfRawData (extra data at the end of

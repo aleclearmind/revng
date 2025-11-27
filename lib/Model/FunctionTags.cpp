@@ -66,13 +66,10 @@ FunctionPoolTag<StringLiteralPoolKey>
                    const FunctionPoolTag<StringLiteralPoolKey> &Tag) {
                   for (llvm::Function &F : Tag.functions(&M)) {
                     const auto &[StartAddress,
-                                 VirtualSize,
                                  Offset,
                                  StrLen,
                                  Type] = extractStringLiteralFromMetadata(F);
-                    StringLiteralPoolKey Key = {
-                      StartAddress, VirtualSize, Offset, Type
-                    };
+                    StringLiteralPoolKey Key = { StartAddress, Offset, Type };
                     Pool.record(Key, &F);
                   }
                 });
@@ -185,7 +182,7 @@ FunctionPoolTag<llvm::Type *>
        { &FunctionTags::UniquedByPrototype },
        InitializationMode::InitializeFromReturnType);
 
-using SegmentRefPoolKey = std::tuple<MetaAddress, uint64_t, llvm::Type *>;
+using SegmentRefPoolKey = std::tuple<MetaAddress, llvm::Type *>;
 FunctionPoolTag<SegmentRefPoolKey>
   SegmentRef("segment-ref",
              { llvm::Attribute::NoUnwind, llvm::Attribute::WillReturn },
@@ -195,11 +192,10 @@ FunctionPoolTag<SegmentRefPoolKey>
                 llvm::Module &M,
                 const FunctionPoolTag<SegmentRefPoolKey> &Tag) {
                for (llvm::Function &F : Tag.functions(&M)) {
-                 const auto &[StartAddress,
-                              VirtualSize] = extractSegmentKeyFromMetadata(F);
+                 MetaAddress StartAddress = extractSegmentKeyFromMetadata(F);
                  auto *RetType = F.getFunctionType()->getReturnType();
 
-                 SegmentRefPoolKey Key = { StartAddress, VirtualSize, RetType };
+                 SegmentRefPoolKey Key = { StartAddress, RetType };
                  Pool.record(Key, &F);
                }
              });
@@ -333,8 +329,7 @@ getExtractedValuesFromInstruction(const llvm::Instruction *I) {
 }
 
 void setSegmentKeyMetadata(llvm::Function &SegmentRefFunction,
-                           MetaAddress StartAddress,
-                           uint64_t VirtualSize) {
+                           MetaAddress StartAddress) {
   using namespace llvm;
 
   auto &Context = SegmentRefFunction.getContext();
@@ -344,11 +339,8 @@ void setSegmentKeyMetadata(llvm::Function &SegmentRefFunction,
   auto *SAMD = QMD.get(StartAddress.toString());
   revng_assert(SAMD != nullptr);
 
-  auto *VSConstant = ConstantInt::get(Type::getInt64Ty(Context), VirtualSize);
-  auto *VSMD = ConstantAsMetadata::get(VSConstant);
-
   SegmentRefFunction.setMetadata(FunctionTags::UniqueIDMDName,
-                                 QMD.tuple({ SAMD, VSMD }));
+                                 QMD.tuple({ SAMD }));
 }
 
 bool hasSegmentKeyMetadata(const llvm::Function &F) {
@@ -357,8 +349,7 @@ bool hasSegmentKeyMetadata(const llvm::Function &F) {
   return nullptr != F.getMetadata(SegmentRefMDKind);
 }
 
-std::pair<MetaAddress, uint64_t>
-extractSegmentKeyFromMetadata(const llvm::Function &F) {
+MetaAddress extractSegmentKeyFromMetadata(const llvm::Function &F) {
   using namespace llvm;
   revng_assert(hasSegmentKeyMetadata(F));
 
@@ -370,10 +361,8 @@ extractSegmentKeyFromMetadata(const llvm::Function &F) {
   auto *SAMD = cast<MDString>(Node->getOperand(0));
   MetaAddress StartAddress = MetaAddress::fromString(SAMD->getString());
   revng_assert(StartAddress.isValid());
-  auto *VSMD = cast<ConstantAsMetadata>(Node->getOperand(1))->getValue();
-  uint64_t VirtualSize = cast<ConstantInt>(VSMD)->getZExtValue();
 
-  return { StartAddress, VirtualSize };
+  return StartAddress;
 }
 
 void setStringLiteralMetadata(llvm::Function &StringLiteralFunction,
@@ -417,7 +406,7 @@ bool hasStringLiteralMetadata(const llvm::Function &F) {
   return nullptr != F.getMetadata(StringLiteralMDKind);
 }
 
-std::tuple<MetaAddress, uint64_t, uint64_t, uint64_t, llvm::Type *>
+std::tuple<MetaAddress, uint64_t, uint64_t, llvm::Type *>
 extractStringLiteralFromMetadata(const llvm::Function &F) {
   using namespace llvm;
   revng_assert(hasStringLiteralMetadata(F));
@@ -436,16 +425,15 @@ extractStringLiteralFromMetadata(const llvm::Function &F) {
     return cast<ConstantInt>(MD)->getZExtValue();
   };
 
-  uint64_t VirtualSize = ExtractInteger(Node->getOperand(1));
-  uint64_t Offset = ExtractInteger(Node->getOperand(2));
-  uint64_t StrLen = ExtractInteger(Node->getOperand(3));
-  uint64_t ReturnTypeLength = ExtractInteger(Node->getOperand(4));
+  uint64_t Offset = ExtractInteger(Node->getOperand(1));
+  uint64_t StrLen = ExtractInteger(Node->getOperand(2));
+  uint64_t ReturnTypeLength = ExtractInteger(Node->getOperand(3));
   llvm::Type *PointerType = llvm::PointerType::get(Context, 0);
   llvm::Type *ReturnType = ReturnTypeLength == 0 ?
                              PointerType :
                              llvm::IntegerType::get(Context, ReturnTypeLength);
 
-  return { StartAddress, VirtualSize, Offset, StrLen, ReturnType };
+  return { StartAddress, Offset, StrLen, ReturnType };
 }
 
 // This name corresponds to a function in `early-linked`.

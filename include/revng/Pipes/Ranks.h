@@ -72,10 +72,10 @@ inline auto DynamicFunction = defineRank<"dynamic-function",
 ///
 /// Example:
 /// ```
-/// /segment/0x1000:Code_aarch64-256
+/// /segment/0x1000:Code_aarch64
 /// ```
 inline auto Segment = defineRank<"segment", // formatting
-                                 model::Segment::Key,
+                                 MetaAddress,
                                  "Segments">(Binary);
 
 /// This is the rank for representing comments in isolated function *bodies*.

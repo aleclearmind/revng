@@ -312,9 +312,8 @@ getStrongModelInfo(const llvm::Instruction *Inst, const model::Binary &Model) {
         rc_return handleReturnValue(Prototype, Model);
 
       } else if (FTags.contains(FunctionTags::SegmentRef)) {
-        const auto &[StartAddress,
-                     VirtualSize] = extractSegmentKeyFromMetadata(*CalledFunc);
-        auto Segment = Model.Segments().at({ StartAddress, VirtualSize });
+        MetaAddress StartAddress = extractSegmentKeyFromMetadata(*CalledFunc);
+        auto Segment = Model.Segments().at(StartAddress);
         if (not Segment.Type().isEmpty())
           rc_return{ Segment.Type() };
 

@@ -61,7 +61,7 @@ public:
 private:
   [[nodiscard]] std::string automaticName(const model::Binary &Binary,
                                           const model::Segment &Segment) const {
-    auto Iterator = Binary.Segments().find(Segment.key());
+    auto Iterator = Binary.Segments().find(Segment.StartAddress());
     auto Result = std::string(Configuration.UnnamedSegmentPrefix())
                   + std::to_string(std::distance(Binary.Segments().begin(),
                                                  Iterator));
@@ -395,6 +395,7 @@ public:
       return CountingNameBuilder::homelessNamesImpl(Function->GotoLabels());
     }
   };
+
   GotoLabelNameBuilder gotoLabels(const model::Function &Function) const {
     return GotoLabelNameBuilder(*this, Function);
   }

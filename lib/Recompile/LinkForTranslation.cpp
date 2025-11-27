@@ -196,8 +196,7 @@ static CommandList linkingArgs(const model::Binary &Model,
     std::string SectionName;
     {
       llvm::raw_string_ostream NameStream(SectionName);
-      NameStream << "segment-" << Segment.StartAddress().toString() << "-"
-                 << Segment.endAddress().toString();
+      NameStream << "segment-" << Segment.StartAddress().toString();
     }
 
     TemporaryFile &RawSegment = Result.createTemporary("revng-link-for-"

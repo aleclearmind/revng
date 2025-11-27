@@ -726,8 +726,9 @@ void ELFImporter<T, HasAddend>::parseSegments(ELFFile<T> &TheELF) {
         continue;
       }
 
-      model::Segment NewSegment({ Start, ProgramHeader.p_memsz });
+      model::Segment NewSegment(Start);
 
+      NewSegment.VirtualSize() = ProgramHeader.p_memsz;
       NewSegment.StartOffset() = ProgramHeader.p_offset;
 
       auto MaybeEndOffset = (OverflowSafeInt(u64(ProgramHeader.p_offset))

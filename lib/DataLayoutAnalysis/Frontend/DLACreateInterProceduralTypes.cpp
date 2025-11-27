@@ -266,8 +266,8 @@ bool TSBuilder::createInterproceduralTypes(llvm::Module &M,
   }
 
   for (Function &F : FunctionTags::SegmentRef.functions(&M)) {
-    const auto &[StartAddress, VirtualSize] = extractSegmentKeyFromMetadata(F);
-    const model::Segment *Segment = &Segments.at({ StartAddress, VirtualSize });
+    MetaAddress StartAddress = extractSegmentKeyFromMetadata(F);
+    const model::Segment *Segment = &Segments.at(StartAddress);
     LayoutTypeSystemNode *SegmentNode = SegmentNodeMap.at(Segment);
 
     LayoutTypeSystemNode *SegmentRefNode = getOrCreateLayoutType(&F).first;
@@ -287,12 +287,11 @@ bool TSBuilder::createInterproceduralTypes(llvm::Module &M,
 
   for (Function &F : FunctionTags::StringLiteral.functions(&M)) {
     const auto &[StartAddress,
-                 VirtualSize,
                  Offset,
                  StrLen,
                  _] = extractStringLiteralFromMetadata(F);
 
-    const model::Segment *Segment = &Segments.at({ StartAddress, VirtualSize });
+    const model::Segment *Segment = &Segments.at(StartAddress);
     LayoutTypeSystemNode *SegmentNode = SegmentNodeMap.at(Segment);
 
     LayoutTypeSystemNode *LiteralNode = getOrCreateLayoutType(&F).first;
