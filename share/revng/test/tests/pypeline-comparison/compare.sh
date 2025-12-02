@@ -122,8 +122,6 @@ RC=0
 #       is temporary they are hardcorded here.
 if [[ "$ARTIFACT" = "disassemble" ]]; then
     compare "/function/" || RC=$?
-elif [[ "$ARTIFACT" = "emit-type-definitions" ]]; then
-    compare "/type-definition/" || RC=$?
 elif [[ "$ARTIFACT" = "lift" ]]; then
     compare_lift || RC=$?
 else

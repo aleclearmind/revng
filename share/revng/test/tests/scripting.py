@@ -57,9 +57,6 @@ def run_test(project_getter: Callable[[], Project], binary: str):
             break
     assert function_original_name is not None
 
-    # Run an artefact on `TypeDefinitions`
-    project.model.TypeDefinitions[1].get_artifact("emit-type-definitions")
-
     all_functions_entry = [function.Entry for function in project.model.Functions]
     # Assert that when we get the artifact for a single function we get
     # the result of only that function

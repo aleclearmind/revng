@@ -54,9 +54,6 @@ Once you have successfully loaded a binary, you can obtain the available artifac
 ...                    project.model.Functions[1]],
 ...    "decompile": None
 ... })
-
-# You can also get the artifact for `TypeDefinitions`
->>> project.model.TypeDefinitions[1].get_artifact("emit-type-definitions")
 ```
 
 You can also `parse` the result with `ptml`:
