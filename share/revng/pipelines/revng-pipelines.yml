@@ -33,20 +33,12 @@ Containers:
     Type: function-control-flow-graph-svg
   - Name: cfg.yml.tar.gz
     Type: cfg
-  - Name: types-and-globals.h
-    Type: model-header
-  - Name: helpers.h
-    Type: helpers-header
   - Name: decompiled.c
     Type: decompiled-c-code
   - Name: decompiled.tar.gz
     Type: decompile
-  - Name: recompilable-archive.tar.gz
-    Type: recompilable-archive
   - Name: functions.mlir
     Type: clift-module
-  - Name: model-type-definitions.tar.gz
-    Type: model-type-definitions
 Branches:
   - Steps:
       - Name: initial
