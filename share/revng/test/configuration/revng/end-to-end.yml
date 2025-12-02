@@ -103,38 +103,6 @@ commands:
       revng artifact --resume "$OUTPUT" render-svg-cfg "$INPUT1" -o /dev/null;
 
   #
-  # Produce a tarball of decompile files from revng.analyzed-model
-  # Also compare the members of the produced tar file and the input model,
-  # both should contain the same members (except the extension).
-  #
-  - type: revng.legacy.decompiled-c-tar
-    from:
-      - type: revng-qa.compiled
-        filter: one-per-architecture
-      - type: revng.analyzed-model
-    suffix: /
-    command: |-
-      revng artifact
-        --model "$INPUT2"
-        --resume "$OUTPUT"
-        decompile "$INPUT1" > "$OUTPUT/decompiled.tar.gz";
-
-      diff -u <(yq -r '.Functions[].Entry' "$INPUT2" | sort)
-              <(tar -tf "$OUTPUT/decompiled.tar.gz" | sed 's|\.c\.ptml$$||' | sort);
-
-  #
-  # Produce legacy single decompiled file and headers from revng.analyzed-model
-  #
-  - type: revng.legacy.decompiled-c
-    from:
-      - type: revng-qa.compiled
-        filter: one-per-architecture
-      - type: revng.analyzed-model
-    suffix: /
-    command: |-
-      ./emit-and-check-c decompile-to-single-file "$INPUT1" "$INPUT2" "$OUTPUT" "$POINTER_SIZE" -Wno-shift-count-overflow
-
-  #
   # Produce the emit-c artifact and check the resulting C code
   #
   - type: revng.emit-and-check-c
@@ -186,10 +154,5 @@ commands:
           "$BINARY" \
         | revng ptml > "$OUTDIR/decompiled.c"
 
-        DEFINES=""
-        if [ "$ARTIFACT" == "decompile-to-single-file" ]; then
-          DEFINES="-DLEGACY_BACKEND"
-        fi
-
-        revng check-decompiled-c "$OUTDIR/decompiled.c" -I"$OUTDIR" "$@" -m"$POINTER_SIZE" $DEFINES \
+        revng check-decompiled-c "$OUTDIR/decompiled.c" -I"$OUTDIR" "$@" -m"$POINTER_SIZE" \
           |& tee "$OUTDIR/check-decompiled-c.log"
