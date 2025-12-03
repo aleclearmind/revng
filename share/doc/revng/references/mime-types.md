@@ -21,7 +21,6 @@ USAGE: revng-artifact [options] <artifact> <binary>
   make-segment-ref            - application/x.llvm.bc+zstd
   cleanup-ir                  - application/x.llvm.bc+zstd
   emit-c                      - text/x.c+ptml+tar+gz
-  emit-c-as-single-file       - text/x.c+ptml
 ```
 
 ## MIME types
