@@ -17,8 +17,7 @@ commands:
         "${ABI_NAME}"
         "${OUTPUT}/imported_binary.yml"
         "${OUTPUT}/reference_binary.yml";
-      revng artifact emit-c-as-single-file "${INPUT}/functions"
+      revng artifact emit-c "${INPUT}/functions"
         -m="${OUTPUT}/reference_binary.yml"
         --resume="${OUTPUT}/resume"
-        -o="${OUTPUT}/decompiled.c.ptml";
-      revng ptml "${OUTPUT}/decompiled.c.ptml" -o="${OUTPUT}/decompiled.c"
+        -o="${OUTPUT}/decompiled.c.tar.gz";

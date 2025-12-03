@@ -33,8 +33,6 @@ Containers:
     Type: function-control-flow-graph-svg
   - Name: cfg.yml.tar.gz
     Type: cfg
-  - Name: decompiled.c
-    Type: decompiled-c-code
   - Name: decompiled.tar.gz
     Type: decompile
   - Name: functions.mlir
@@ -565,18 +563,6 @@ Branches:
           Docs: |-
             This artifact contains a C function for each function in the input
             program.
-      - Name: emit-c-as-single-file
-        Pipes:
-          - Type: decompile-to-single-file
-            UsedContainers: [decompiled.tar.gz, decompiled.c]
-        Artifacts:
-          Container: decompiled.c
-          Kind: decompiled-to-c
-          SingleTargetFilename: binary_decompiled.c
-          Docs: |-
-            This artifact is a single PTML file representing the decompiled C
-            code of the whole program, including the body of all of program's
-            functions. (Clift backend)
 AnalysesLists:
   - Name: revng-initial-auto-analysis
     Analyses:
