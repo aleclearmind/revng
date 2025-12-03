@@ -30,7 +30,6 @@
 #include "revng/ABI/ModelHelpers.h"
 #include "revng/ADT/GenericGraph.h"
 #include "revng/ADT/SmallMap.h"
-#include "revng/InitModelTypes/InitModelTypes.h"
 #include "revng/LocalVariables/LocalVariableBuilder.h"
 #include "revng/MFP/MFP.h"
 #include "revng/MFP/SetLattices.h"
@@ -219,44 +218,6 @@ static bool isProgramPoint(const Instruction *I) {
          or mayReadMemory(*I);
 }
 
-static RecursiveCoroutine<std::optional<const Value *>>
-getAccessedLocalVariableFromModelGEP(const CallInst *ModelGEPRefCall) {
-  revng_assert(isCallToTagged(ModelGEPRefCall, FunctionTags::ModelGEPRef));
-
-  revng_assert(ModelGEPRefCall->arg_size() >= 2);
-
-  // If the ModelGEPRefCall has more than 2 arguments, and some of them are not
-  // constants, we cannot figure out all the list of potentially accessed local
-  // variables, so we just return nullptr.
-  for (const Use &GEPArg : llvm::drop_begin(ModelGEPRefCall->args(), 2)) {
-    if (not isa<Constant>(GEPArg.get()))
-      rc_return nullptr;
-  }
-
-  // If the Base argument of the ModelGEPRefCall isn't a LocalVariable, nor an
-  // Argument, nor another ModelGEPRef, we just return nullopt, meaning that
-  // this thing doesn't really access any local variable.
-  auto *GEPBase = ModelGEPRefCall->getArgOperand(1);
-  // If the GEPBase is directly an argument, we're done
-  if (isa<Argument>(GEPBase))
-    rc_return GEPBase;
-
-  // If the GEPBase is directly a LocalVariable, we're done
-  if (isCallToTagged(GEPBase, FunctionTags::AllocatesLocalVariable))
-    rc_return GEPBase;
-
-  // If the GEPBase is another ModelGEPRef we recur.
-  // Notice that we don't recur on ModelGEP, only on ModelGEPRef, because simple
-  // ModelGEP can have arbitrary base pointers, but they never access
-  // LocalVariables.
-  if (auto *NestedModelGEPRef = getCallToTagged(GEPBase,
-                                                FunctionTags::ModelGEPRef))
-    rc_return rc_recur getAccessedLocalVariableFromModelGEP(NestedModelGEPRef);
-
-  // Everything else cannot access local variables, so we return nullopt.
-  rc_return std::nullopt;
-}
-
 template<bool IsLegacy>
 static const CopyType<IsLegacy> *getCopy(const Instruction *I) {
   if constexpr (IsLegacy)
@@ -292,47 +253,26 @@ static std::optional<const Value *> getAccessedLocal(const Instruction *I) {
   if (not Copy and not Assign)
     return std::nullopt;
 
-  if constexpr (IsLegacy) {
-    const CallInst *AccessCall = Copy ? Copy : Assign;
+  static_assert(!IsLegacy);
 
-    unsigned AccessArgumentNumber = Assign ? 1 : 0;
-    const auto *Accessed = AccessCall->getArgOperand(AccessArgumentNumber);
+  unsigned PointerOperandNo = Copy ? LoadInst::getPointerOperandIndex() :
+                                     StoreInst::getPointerOperandIndex();
+  const Value *PointerOperand = I->getOperand(PointerOperandNo);
+  // If the pointer operand of the access is an argument return it.
+  if (isa<Argument>(PointerOperand))
+    return PointerOperand;
 
-    // If the accessed thing is directly an Argument or a LocalVariable we're
-    // done.
-    if (isa<Argument>(Accessed)
-        or isCallToTagged(Accessed, FunctionTags::AllocatesLocalVariable)) {
-      return Accessed;
-    }
+  // If the pointer operand of the access is an AllocaInst
+  // representing a local variable, return it.
+  const auto *AccessedLocalVariable = dyn_cast<AllocaInst>(PointerOperand);
+  if (AccessedLocalVariable)
+    return AccessedLocalVariable;
 
-    // If the accessed thing is not a ModelGEPRef, then it's not an access to a
-    // local variable.
-    auto *ModelGEPRef = getCallToTagged(Accessed, FunctionTags::ModelGEPRef);
-    if (not ModelGEPRef)
-      return std::nullopt;
-
-    return getAccessedLocalVariableFromModelGEP(ModelGEPRef);
-  } else {
-
-    unsigned PointerOperandNo = Copy ? LoadInst::getPointerOperandIndex() :
-                                       StoreInst::getPointerOperandIndex();
-    const Value *PointerOperand = I->getOperand(PointerOperandNo);
-    // If the pointer operand of the access is an argument return it.
-    if (isa<Argument>(PointerOperand))
-      return PointerOperand;
-
-    // If the pointer operand of the access is an AllocaInst
-    // representing a local variable, return it.
-    const auto *AccessedLocalVariable = dyn_cast<AllocaInst>(PointerOperand);
-    if (AccessedLocalVariable)
-      return AccessedLocalVariable;
-
-    // TODO: in all the other cases we would have to resort to LLVM's alias
-    // analysis for providing a sensible answer.
-    // For now we're not doing that, so we just return nullptr, which means I
-    // accesses a local variable but we can't say which one.
-    return nullptr;
-  }
+  // TODO: in all the other cases we would have to resort to LLVM's alias
+  // analysis for providing a sensible answer.
+  // For now we're not doing that, so we just return nullptr, which means I
+  // accesses a local variable but we can't say which one.
+  return nullptr;
 }
 
 template<bool IsLegacy>
@@ -471,10 +411,6 @@ static void applyTransferFunction(Instruction *I, LatticeElement<IsLegacy> &E) {
       .Assignment = nullptr,
     });
   }
-}
-
-static void applyTransferFunction(Instruction *I, LatticeElement<true> &E) {
-  return applyTransferFunction<true>(I, E);
 }
 
 static void applyTransferFunction(Instruction *I, LatticeElement<false> &E) {
@@ -1271,13 +1207,7 @@ public:
     InstructionToSerializePicker InstructionPicker{ F, Graph, Result };
 
     TypeMap InstructionTypes = {};
-    if constexpr (IsLegacy) {
-      InstructionTypes = initModelTypesConsideringUses(F,
-                                                       ModelFunction,
-                                                       *Model,
-                                                       /* PointersOnly */
-                                                       false);
-    }
+    static_assert(not IsLegacy);
     VariableInserter<IsLegacy> VarInserter{ F,
                                             *Model,
                                             std::move(InstructionTypes) };
@@ -1290,13 +1220,6 @@ public:
 
 template<>
 char SwitchToStatements<false>::ID = 0;
-
-template<>
-char SwitchToStatements<true>::ID = 0;
-
-using RegisterLegacy = RegisterPass<SwitchToStatements<true>>;
-static RegisterLegacy
-  X("legacy-switch-to-statements", "LegacySwitchToStatements", false, false);
 
 using Register = RegisterPass<SwitchToStatements<false>>;
 static Register Y("switch-to-statements", "SwitchToStatements", false, false);
