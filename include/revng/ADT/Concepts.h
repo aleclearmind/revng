@@ -131,3 +131,6 @@ concept IsIntegralOrEnum = std::is_integral_v<T>
                            or (std::is_enum_v<T>
                                and std::is_integral_v<
                                  std::underlying_type_t<T>>);
+
+template<bool IsConst, typename T>
+using ConstIf = std::conditional_t<IsConst, const T, T>;
