@@ -43,15 +43,16 @@ public:
 
   size_t size() const { return Loggers.size(); }
 
-  void enable(llvm::StringRef Name) {
+  /// \return false is logger does not exists
+  [[nodiscard]] bool enable(llvm::StringRef Name) {
     for (Logger *L : Loggers) {
       if (L->name() == Name) {
         L->enable();
-        return;
+        return true;
       }
     }
 
-    revng_abort("Requested logger not available");
+    return false;
   }
 
   void disable(llvm::StringRef Name) {
@@ -75,8 +76,10 @@ static llvm::ManagedStatic<LoggersRegistry> Loggers;
 
 ScopedDebugFeature::ScopedDebugFeature(std::string Name, bool Enable) :
   Name(Name), Enabled(Enable) {
-  if (Enabled)
-    Loggers->enable(Name);
+  if (Enabled) {
+    bool Found = Loggers->enable(Name);
+    revng_assert(Found);
+  }
 }
 
 ScopedDebugFeature::~ScopedDebugFeature() {
@@ -151,7 +154,11 @@ struct DebugLogOptionList : public llvm::cl::list<PlaceholderEnum> {
                              llvm::StringRef ArgName,
                              llvm::StringRef Value,
                              bool MultiArg = false) override {
-    Loggers->enable(Value);
+    bool Found = Loggers->enable(Value);
+    if (not Found) {
+      dbg << "Logger \"" << Value.str() << "\" not found.\n";
+      return true;
+    }
     return list::addOccurrence(Pos, ArgName, Value, MultiArg);
   }
 };
