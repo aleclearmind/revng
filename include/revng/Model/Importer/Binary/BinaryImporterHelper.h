@@ -18,7 +18,7 @@ protected:
   model::Binary &Binary;
   uint64_t BaseAddress = 0;
   Logger &Logger;
-  llvm::SmallVector<const model::Segment *> ExecutableSegments;
+  MetaAddressRangeSet ExecutableRanges;
   bool SegmentsInitialized = false;
 
 public:
@@ -50,10 +50,7 @@ public:
 
 public:
   void processSegments() {
-    for (const model::Segment &Segment : Binary.Segments())
-      if (Segment.IsExecutable())
-        ExecutableSegments.push_back(&Segment);
-
+    ExecutableRanges = Binary.executableRanges();
     SegmentsInitialized = true;
   }
 
@@ -104,10 +101,6 @@ private:
   /// \note Keep this private in order enforce not direct usage of EntryPoint
   ///       ExtraCodeAddress and new Functions registration.
   bool isExecutable(const MetaAddress &Address) const {
-    revng_assert(SegmentsInitialized);
-    auto ContainsAddress = [Address](const model::Segment *Segment) -> bool {
-      return Segment->hasDataFor(Address);
-    };
-    return llvm::any_of(ExecutableSegments, ContainsAddress);
+    return ExecutableRanges.contains(Address);
   }
 };
