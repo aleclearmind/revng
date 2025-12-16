@@ -28,6 +28,7 @@ revng_add_library_internal(
   GzipTarFile.cpp
   Tar.cpp
   GzipStream.cpp
+  Unicode.cpp
   ZstdStream.cpp)
 
 include(FindLibArchive)
