@@ -29,6 +29,7 @@ using namespace llvm;
 
 class InvokeIsolatedFunctionsImpl {
 private:
+  // WIP FINAL: turn into a struct
   using FunctionInfo = tuple<const model::Function *, BasicBlock *, Function *>;
   using FunctionMap = std::map<model::Function::Key, FunctionInfo>;
 
