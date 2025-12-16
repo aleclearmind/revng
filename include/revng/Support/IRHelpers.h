@@ -1078,6 +1078,7 @@ buildString(llvm::Module *M, llvm::StringRef String, const llvm::Twine &Name);
 
 llvm::Constant *getUniqueString(llvm::Module *M,
                                 llvm::StringRef String,
+                                bool AddNull = true,
                                 llvm::StringRef Namespace = "revng.const.");
 
 llvm::StringRef extractFromConstantStringPtr(llvm::Value *V);
@@ -1561,3 +1562,12 @@ void writeBitcode(const llvm::Module &Module,
 /// Copy a module to a new LLVMContext.
 std::unique_ptr<llvm::Module> cloneIntoContext(const llvm::Module &Module,
                                                llvm::LLVMContext &NewContext);
+
+/// Create a new global variable or, if it already exist, check that the
+/// expected features match.
+llvm::GlobalVariable &getOrCreateGlobal(llvm::Module &M,
+                                        llvm::StringRef Name,
+                                        llvm::Type *Type,
+                                        bool IsConstant,
+                                        llvm::GlobalValue::LinkageTypes Linkage,
+                                        llvm::Constant *Initializer = nullptr);
