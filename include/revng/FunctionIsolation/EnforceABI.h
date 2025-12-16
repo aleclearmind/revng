@@ -18,7 +18,6 @@ private:
   const model::Binary &Binary;
   LLVMFunctionContainer &Output;
   const CFGMap &CFG;
-  model::CNameBuilder NameBuilder;
 
 public:
   static constexpr llvm::StringRef Name = "enforce-abi";
@@ -33,7 +32,7 @@ public:
              llvm::StringRef DynamicConfig,
              const CFGMap &CFG,
              LLVMFunctionContainer &Output) :
-    Binary(*Model.get().get()), Output(Output), CFG(CFG), NameBuilder(Binary){};
+    Binary(*Model.get().get()), Output(Output), CFG(CFG) {}
 
   void runOnFunction(const model::Function &TheFunction);
 };

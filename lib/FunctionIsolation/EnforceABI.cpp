@@ -563,8 +563,7 @@ namespace revng::pypeline::piperuns {
 
 void EnforceABI::runOnFunction(const model::Function &TheFunction) {
   llvm::Module &Module = Output.getModule(ObjectID(TheFunction.Entry()));
-  llvm::Function *LLVMFunction = Module.getFunction(NameBuilder
-                                                      .llvmName(TheFunction));
+  llvm::Function *LLVMFunction = Module.getFunction(llvmName(TheFunction));
 
   GeneratedCodeBasicInfo GCBI(Binary);
   GCBI.run(Module);
