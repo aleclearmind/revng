@@ -46,6 +46,10 @@
 #include "revng/RemoveLiftingArtifacts/CleanupIR.h"
 #include "revng/RemoveLiftingArtifacts/PromoteInitCSVToUndef.h"
 #include "revng/RemoveLiftingArtifacts/RemoveLiftingArtifacts.h"
+#include "revng/SegmentReferences/DetectCStrings.h"
+#include "revng/SegmentReferences/EmitFunctionPointers.h"
+#include "revng/SegmentReferences/EmitSegmentReferences.h"
+#include "revng/SegmentReferences/EmitStringConstants.h"
 #include "revng/Yield/HexDump.h"
 #include "revng/Yield/Pipes/ProcessAssembly.h"
 #include "revng/Yield/Pipes/ProcessCallGraph.h"
@@ -99,6 +103,8 @@ REGISTER(FunctionPipeRun, AttachDebugInfo);
 REGISTER(FunctionPipeRun, Clifter);
 REGISTER(FunctionPipeRun, CollectCFG);
 REGISTER(FunctionPipeRun, EmitC);
+REGISTER(FunctionPipeRun, EmitFunctionPointers);
+REGISTER(FunctionPipeRun, EmitStringConstants);
 REGISTER(FunctionPipeRun, EnforceABI);
 REGISTER(FunctionPipeRun, ImportDescriptiveFunctionInfo);
 REGISTER(FunctionPipeRun, ImportFunctionDataModel);
@@ -123,6 +129,7 @@ REGISTER(SingleOutputPipeRun, CompileRootModule);
 REGISTER(SingleOutputPipeRun, EmitCAsDirectory);
 REGISTER(SingleOutputPipeRun, EmitCAsSingleFile);
 REGISTER(SingleOutputPipeRun, EmitHelperHeader);
+REGISTER(SingleOutputPipeRun, EmitSegmentReferences);
 REGISTER(SingleOutputPipeRun, EmitTypeAndGlobalHeader);
 REGISTER(SingleOutputPipeRun, HexDump);
 REGISTER(SingleOutputPipeRun, ImportDescriptiveInfo);
@@ -151,6 +158,7 @@ REGISTER(Analysis, ApplyDiff);
 REGISTER(Analysis, ConvertFunctionsToCABI);
 REGISTER(Analysis, ConvertFunctionsToRaw);
 REGISTER(Analysis, DetectABI);
+REGISTER(Analysis, revng::pypeline::analyses::DetectCStrings);
 REGISTER(Analysis, DetectStackSize);
 REGISTER(Analysis, ImportFromC);
 REGISTER(Analysis, ImportPrototypesFromDatabase);
