@@ -435,11 +435,28 @@ private:
     return emitHelperFunctionDeclaration(F);
   }
 
-  clift::ValueType emitGlobalObject(const llvm::GlobalObject *G) {
-    if (const auto *F = llvm::dyn_cast<llvm::Function>(G))
-      return emitFunctionDeclaration(F).getFunctionType();
+  clift::GlobalVariableOp
+  emitGlobalVariableDeclaration(const llvm::GlobalVariable *V) {
+    llvm::StringRef Name = V->getName();
 
-    revng_abort("Unsupported global object kind");
+    auto MA = SegmentGlobal::getAddress(*V);
+    revng_check(MA.isValid());
+
+    auto It = Model.Segments().find(MA);
+    revng_check(It != Model.Segments().end());
+
+    auto VariableType = importModelType(*It->Type());
+
+    return getOrEmitSymbol(V, [&]() -> clift::GlobalVariableOp {
+      // It is important not to query any model properties in this scope, as
+      // doing so would break invalidation when the import of a function uses a
+      // declaration already emitted during the import of previous function.
+      auto Op = Builder.create<GlobalVariableOp>(mlir::UnknownLoc::get(Context),
+                                                 Name,
+                                                 VariableType);
+      Op.setHandle(pipeline::locationString(revng::ranks::Segment, MA));
+      return Op;
+    });
   }
 
   template<typename OpT, typename... ArgsT>
