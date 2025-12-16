@@ -1192,6 +1192,9 @@ public:
   }
 
   bool runOnFunction(Function &F) override {
+    if (not FunctionTags::Isolated.isExactTagOf(&F))
+      return false;
+
     revng_log(Log, "SwitchToStatements: " << F.getName());
 
     auto Graph = PPGWithInstructionMap::makeFromFunction(F);
