@@ -70,3 +70,16 @@ inline llvm::IntegerType *getLLVMTypeForScalar(llvm::LLVMContext &Context,
   revng_assert(Type.isScalar());
   return getLLVMIntegerTypeFor(Context, Type);
 }
+
+inline llvm::SmallVector<llvm::Type *>
+toLLVMTypes(llvm::LLVMContext &Context,
+            const llvm::SmallVector<model::Register::Values> &Registers) {
+  using namespace llvm;
+  SmallVector<llvm::Type *> Result;
+  auto IntoLLVMType = [&Context](model::Register::Values V) -> Type * {
+    return IntegerType::getIntNTy(Context, 8 * model::Register::getSize(V));
+  };
+  std::ranges::copy(Registers | std::views::transform(IntoLLVMType),
+                    std::back_inserter(Result));
+  return Result;
+}
