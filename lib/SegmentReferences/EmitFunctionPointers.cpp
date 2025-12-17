@@ -11,7 +11,7 @@
 #include "revng/SegmentReferences/SegmentUsesEnumerator.h"
 #include "revng/Support/IRBuilder.h"
 #include "revng/Support/IRHelpers.h"
-#include "revng/Support/MetaAddress/MetaAddressRangeSet.h"
+#include "revng/Support/MetaAddress/MetaAddressRange.h"
 
 using namespace llvm;
 

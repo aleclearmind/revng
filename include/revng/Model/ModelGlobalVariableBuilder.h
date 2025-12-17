@@ -7,7 +7,7 @@
 #include "revng/Model/Type.h"
 #include "revng/Model/TypeDefinition.h"
 #include "revng/Support/MetaAddress.h"
-#include "revng/Support/MetaAddress/MetaAddressRangeSet.h"
+#include "revng/Support/MetaAddress/MetaAddressRange.h"
 
 namespace model {
 class Binary;
