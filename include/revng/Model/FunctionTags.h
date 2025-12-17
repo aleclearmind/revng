@@ -12,7 +12,12 @@ std::tuple<MetaAddress, uint64_t, uint64_t, llvm::Type *>
 extractStringLiteralFromMetadata(const llvm::Function &StringLiteralFunction);
 
 /// Extract the key of a model::Segment stored as a metadata.
-MetaAddress extractSegmentKeyFromMetadata(const llvm::Function &F);
+namespace FunctionTags {
+using SegmentRefPoolKey = std::pair<MetaAddress, uint64_t>;
+}
+
+FunctionTags::SegmentRefPoolKey
+extractSegmentKeyFromMetadata(const llvm::Function &F);
 
 namespace FunctionTags {
 
@@ -79,8 +84,8 @@ extern FunctionPoolTag<llvm::Type *> NullPtr;
 extern FunctionPoolTag<llvm::Type *> LocalVariable;
 extern FunctionPoolTag<llvm::Type *> Assign;
 extern FunctionPoolTag<llvm::Type *> Copy;
-using SegmentRefPoolKey = std::tuple<MetaAddress, llvm::Type *>;
-extern FunctionPoolTag<SegmentRefPoolKey> SegmentRef;
+extern Tag SegmentGlobal;
+extern FunctionPoolTag<SegmentRefPoolKey> SegmentGlobalGetter;
 extern FunctionPoolTag<llvm::Type *> UnaryMinus;
 extern FunctionPoolTag<llvm::Type *> BinaryNot;
 extern FunctionPoolTag<llvm::Type *> BooleanNot;
@@ -240,7 +245,7 @@ getExtractedValuesFromInstruction(const llvm::Instruction *);
 
 /// Set the key of a model::Segment stored as a metadata.
 void setSegmentKeyMetadata(llvm::Function &SegmentRefFunction,
-                           MetaAddress StartAddress);
+                           FunctionTags::SegmentRefPoolKey Key);
 
 /// Returns true if \F has an attached metadata representing a segment key.
 bool hasSegmentKeyMetadata(const llvm::Function &F);

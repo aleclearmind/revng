@@ -5,6 +5,7 @@
 //
 
 #include <queue>
+#include <type_traits>
 
 #include "llvm/BinaryFormat/ELF.h"
 #include "llvm/Support/Regex.h"
@@ -12,10 +13,13 @@
 #include "llvm/Support/raw_os_ostream.h"
 #include "llvm/Support/raw_ostream.h"
 
+#include "revng/ADT/Concepts.h"
 #include "revng/Model/Binary.h"
 #include "revng/Model/TypeSystemPrinter.h"
 #include "revng/Model/VerifyHelper.h"
 #include "revng/Support/CommandLine.h"
+
+#include "NamespaceBuilder.h"
 
 namespace {
 

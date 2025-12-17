@@ -739,8 +739,8 @@ bool dla::updateSegmentsTypes(const llvm::Module &M,
                               const TypeMapT &TypeMap) {
   bool Updated = false;
 
-  for (const auto &F : FunctionTags::SegmentRef.functions(&M)) {
-    MetaAddress StartAddress = extractSegmentKeyFromMetadata(F);
+  for (const auto &F : FunctionTags::SegmentGlobalGetter.functions(&M)) {
+    auto [StartAddress, _] = extractSegmentKeyFromMetadata(F);
     auto Segment = Model->Segments().at(StartAddress);
 
     // If the Segment type is missing, we have nothing to update.

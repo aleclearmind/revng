@@ -771,11 +771,33 @@ private:
       if (const auto *F = llvm::dyn_cast<llvm::Function>(G)) {
         revng_log(ExpressionLog, "llvm::Function -> UseOp");
         auto Function = emitFunctionDeclaration(F);
-        rc_return Builder.create<UseOp>(SurroundingLocation,
-                                        Function.getFunctionType(),
-                                        Function.getSymNameAttr());
+
+        auto Type = Function.getFunctionType();
+        auto Use = Builder.create<UseOp>(SurroundingLocation,
+                                         Type,
+                                         Function.getSymNameAttr());
+
+        rc_return emitCast(SurroundingLocation,
+                           Use,
+                           makePointerType(Type),
+                           CastKind::Decay);
       }
 
+      if (const auto *V = llvm::dyn_cast<llvm::GlobalVariable>(G)) {
+        revng_log(ExpressionLog, "llvm::GlobalVariable -> UseOp");
+        auto GlobalVariable = emitGlobalVariableDeclaration(V);
+
+        auto Type = GlobalVariable.getType();
+        auto Use = Builder.create<UseOp>(SurroundingLocation,
+                                         Type,
+                                         GlobalVariable.getSymNameAttr());
+
+        rc_return Builder.create<AddressofOp>(SurroundingLocation,
+                                              makePointerType(Type),
+                                              Use);
+      }
+
+      G->dump();
       revng_abort("Unsupported global object kind");
     }
 
