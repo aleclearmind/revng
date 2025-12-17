@@ -94,6 +94,8 @@ Branches:
         Pipes:
           - Type: lift
             UsedContainers: [input, root.bc.zstd]
+          - Type: emit-segment-references
+            UsedContainers: [root.bc.zstd]
           - Type: llvm-pipe
             UsedContainers: [root.bc.zstd]
             Passes: [globaldce]
@@ -130,6 +132,9 @@ Branches:
             UsedContainers: [cfg.yml.tar.gz, functions.bc.zstd]
           - Type: process-call-graph
             UsedContainers: [cfg.yml.tar.gz, cross-relations.yml]
+          # WIP
+          # - Type: emit-segment-references
+          #   UsedContainers: [functions.bc.zstd]
         Artifacts:
           Container: functions.bc.zstd
           Kind: isolated
@@ -280,7 +285,9 @@ Branches:
             EnabledWhen: [O2]
           - Type: llvm-pipe
             UsedContainers: [root.bc.zstd]
-            Passes: [drop-opaque-return-address]
+            Passes:
+              - drop-opaque-return-address
+              - inline-segment-global-getters
           - Type: compile
             UsedContainers: [root.bc.zstd, object.o]
           - Type: link-for-translation
@@ -308,7 +315,9 @@ Branches:
             EnabledWhen: [O2]
           - Type: llvm-pipe
             UsedContainers: [root-with-functions.bc.zstd]
-            Passes: [drop-opaque-return-address]
+            Passes:
+              - drop-opaque-return-address
+              - inline-segment-global-getters
           - Type: compile-isolated
             UsedContainers: [root-with-functions.bc.zstd, object.o]
           - Type: link-for-translation
@@ -466,15 +475,16 @@ Branches:
               program and detects the layout of data structures.
               The produced data structures are the result of merging the
               information obtained from each function interprocedurally.
-  - From: make-segment-ref
+  - From: segregate-stack-accesses
     Steps:
       - Name: cleanup-ir
         Pipes:
+          - Type: emit-string-constants
+            UsedContainers: [input, functions.bc.zstd]
           - Type: llvm-pipe
             UsedContainers: [functions.bc.zstd]
             Passes:
               - instcombine
-              - cleanup-ir
               - dce
         Artifacts:
           Container: functions.bc.zstd
@@ -524,6 +534,15 @@ Branches:
               - strip-dead-prototypes
               - split-overflow-intrinsics
               - dce
+              - inline-segment-global-getters
+          - Type: emit-function-pointers
+            UsedContainers: [functions.bc.zstd]
+        Analyses:
+          - Name: detect-c-strings
+            Type: detect-c-strings
+            UsedContainers: [input, functions.bc.zstd]
+            Docs: |-
+              This analysis detects NUL-terminated strings, i.e., C strings.
       - Name: emit-c
         Pipes:
           - Type: llvm-pipe
@@ -568,5 +587,6 @@ AnalysesLists:
       - import-well-known-models
       - detect-abi
       - detect-stack-size
+      - detect-c-strings
       - analyze-data-layout
       - convert-functions-to-cabi
