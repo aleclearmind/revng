@@ -4,7 +4,7 @@
 // This file is distributed under the MIT License. See LICENSE.md for details.
 //
 
-#include "revng/Model/ModelGlobalVariableBuilder.h"
+#include "revng/Model/GlobalVariableBuilder.h"
 #include "revng/SegmentReferences/SegmentUsesEnumerator.h"
 
 class RawBinaryView;
@@ -13,7 +13,7 @@ class DetectCStrings {
 private:
   SegmentUsesEnumerator SegmentUses;
   RawBinaryView &BinaryView;
-  ModelGlobalVariableBuilder GlobalBuilder;
+  model::GlobalVariableBuilder GlobalBuilder;
 
 public:
   DetectCStrings(model::Binary &Binary, RawBinaryView &BinaryView) :

@@ -12,27 +12,22 @@
 namespace model {
 class Binary;
 class StructDefinition;
-} // namespace model
 
 /// Creates a global variable (i.e., a field in the Type of model::Segment), but
 /// only if there's a hole at the requested address.
 ///
 /// \note If a Segment does not a have a type, we bail out.
-class ModelGlobalVariableBuilder {
+class GlobalVariableBuilder {
 private:
   model::Binary &Binary;
   std::map<const model::TypeDefinition *, uint64_t> Instances;
 
 public:
-  ModelGlobalVariableBuilder(model::Binary &Binary);
+  GlobalVariableBuilder(model::Binary &Binary);
 
 public:
   [[nodiscard]] bool insert(const MetaAddress &Address,
                             model::UpcastableType &&Type);
-
-private:
-  bool hasMultipleInstances(model::TypeDefinition &Type) const {
-    auto It = Instances.find(&Type);
-    return It != Instances.end() and It->second > 1;
-  }
 };
+
+} // namespace model

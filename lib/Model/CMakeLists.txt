@@ -8,9 +8,9 @@ revng_add_analyses_library_internal(
   Binary.cpp
   CommonTypeMethods.cpp
   FunctionTags.cpp
+  GlobalVariableBuilder.cpp
   InlineSegmentGlobalGetters.cpp
   LoadModelPass.cpp
-  ModelGlobalVariableBuilder.cpp
   NameBuilder.cpp
   TypeSystemPrinter.cpp
   Processing.cpp

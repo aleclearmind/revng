@@ -9,13 +9,13 @@
 #include "revng/ADT/RecursiveCoroutine-coroutine.h"
 #include "revng/ADT/RecursiveCoroutine.h"
 #include "revng/Model/Binary.h"
-#include "revng/Model/ModelGlobalVariableBuilder.h"
+#include "revng/Model/GlobalVariableBuilder.h"
 
 using namespace llvm;
 
 static Logger Log("model-global-variable-builder");
 
-ModelGlobalVariableBuilder::ModelGlobalVariableBuilder(model::Binary &Binary) :
+model::GlobalVariableBuilder::GlobalVariableBuilder(model::Binary &Binary) :
   Binary(Binary) {
   for (auto &Type : Binary.TypeDefinitions())
     for (const model::Type *EdgeType : Type->edges())
@@ -25,7 +25,8 @@ ModelGlobalVariableBuilder::ModelGlobalVariableBuilder(model::Binary &Binary) :
 
 // TODO: consider to build a cache like map<MetaAddress, StructDefinition>
 static RecursiveCoroutine<std::pair<model::StructDefinition *, uint64_t>>
-processType(const MetaAddressRange &TargetRange,
+processType(const std::map<const model::TypeDefinition *, uint64_t> &Instances,
+            const MetaAddressRange &TargetRange,
             const MetaAddress &TypeStartAddress,
             model::Type *CurrentType) {
   static const std::pair<model::StructDefinition *, uint64_t> Fail(nullptr, 0);
@@ -38,7 +39,17 @@ processType(const MetaAddressRange &TargetRange,
 
   revng_assert(CurrentType != nullptr);
   auto *Struct = CurrentType->skipConstAndTypedefs()->getStruct();
-  if (Struct == nullptr)
+  if (Struct == nullptr) {
+    revng_log(Log,
+              "The struct we found has an instance in multiple data "
+              "structures, ignoring");
+    rc_return Fail;
+  }
+
+  // Check if this struct is instantiated in more than one place
+  // TODO: replace this logic with an "singleton" attribute for structs
+  auto It = Instances.find(Struct);
+  if (It != Instances.end() and It->second > 1)
     rc_return Fail;
 
   for (model::StructField &Field : Struct->Fields()) {
@@ -54,7 +65,8 @@ processType(const MetaAddressRange &TargetRange,
 
     if (FieldRange.contains(TargetRange)) {
       // This field contains TargetAddress, recur
-      rc_return rc_recur processType(TargetRange,
+      rc_return rc_recur processType(Instances,
+                                     TargetRange,
                                      FieldStart,
                                      Field.Type().get());
     } else if (FieldRange.overlaps(TargetRange)) {
@@ -71,7 +83,7 @@ processType(const MetaAddressRange &TargetRange,
   rc_return{ Struct, Offset };
 }
 
-bool ModelGlobalVariableBuilder::insert(const MetaAddress &Address,
+bool model::GlobalVariableBuilder::insert(const MetaAddress &Address,
                                         model::UpcastableType &&Type) {
   revng_assert(Address.isValid());
   revng_log(Log,
@@ -98,7 +110,8 @@ bool ModelGlobalVariableBuilder::insert(const MetaAddress &Address,
   revng_assert(EndAddress.isValid());
 
   MetaAddressRange NewFieldRange = { Address, EndAddress };
-  auto [Struct, FieldOffset] = rc_eval(processType(NewFieldRange,
+  auto [Struct, FieldOffset] = rc_eval(processType(Instances,
+                                                   NewFieldRange,
                                                    Segment->StartAddress(),
                                                    Segment->Type().get()));
   if (Struct == nullptr) {
@@ -112,14 +125,6 @@ bool ModelGlobalVariableBuilder::insert(const MetaAddress &Address,
   revng_log(Log,
             "We can insert the field at offset "
               << FieldOffset << " in " << StructType->toDebugString());
-
-  // Exclude structs for which we have more than an instance
-  if (hasMultipleInstances(*Struct)) {
-    revng_log(Log,
-              "The struct we found has an instance in multiple data "
-              "structures, ignoring");
-    return false;
-  }
 
   model::StructField NewField;
   Struct->addField(FieldOffset, std::move(Type));
