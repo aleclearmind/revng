@@ -191,7 +191,7 @@ public:
   class CommentEmitter {
     CTokenEmitter &Emitter;
     CommentKind Kind;
-    ptml::Emitter::TagEmitter Tag;
+    ptml::TagEmitter Tag;
     bool IsAtBeginningOfLine = false;
 
   public:
@@ -202,9 +202,9 @@ public:
 
     ~CommentEmitter();
 
-    [[nodiscard]] ptml::Emitter::TagEmitter
+    [[nodiscard]] ptml::TagEmitter
     initializeOpenTag(llvm::StringRef Tag) {
-      return ptml::Emitter::TagEmitter(Emitter.PTML, Tag);
+      return ptml::TagEmitter(Emitter.PTML, Tag);
     }
 
     void emitContent(llvm::StringRef Content);
@@ -265,7 +265,7 @@ public:
     Delimiter Delimiter;
     int Indent;
 
-    ptml::Emitter::TagEmitter Tag;
+    ptml::TagEmitter Tag;
   };
 
   [[nodiscard]] Scope
@@ -278,7 +278,7 @@ public:
   };
 
   class Region {
-    ptml::Emitter::TagEmitter Tag;
+    ptml::TagEmitter Tag;
 
   public:
     explicit Region(CTokenEmitter &Emitter,
@@ -296,16 +296,16 @@ public:
   }
 
 private:
-  void enterScopeImpl(ptml::Emitter::TagEmitter &Tag,
+  void enterScopeImpl(ptml::TagEmitter &Tag,
                       Delimiter Delimiter,
                       int Indent,
                       ScopeKind Kind);
 
-  void leaveScopeImpl(ptml::Emitter::TagEmitter &Tag,
+  void leaveScopeImpl(ptml::TagEmitter &Tag,
                       Delimiter Delimiter,
                       int Indent);
 
-  void enterRegionImpl(ptml::Emitter::TagEmitter &Tag,
+  void enterRegionImpl(ptml::TagEmitter &Tag,
                        RegionKind Kind,
                        llvm::StringRef Location);
 };

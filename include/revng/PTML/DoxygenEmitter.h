@@ -17,25 +17,42 @@ struct DoxygenCommentConfiguration {
 };
 
 template<CommentEmitter CommentEmitterT>
-class DoxygenCommentEmitter
-  : IndentingEmitter<DoxygenCommentEmitter<CommentEmitterT>> {
+struct DoxygenCommentEmitterLow {
+  CommentEmitterT &Emitter;
+  DoxygenCommentConfiguration Configuration;
+  static constexpr llvm::StringRef IndentString = "  ";
 
-  friend IndentingEmitter<DoxygenCommentEmitter<CommentEmitterT>>;
+  void emitLiteral(llvm::StringRef String) { Emitter.emitContent(String); }
+
+  void emitIndentation(unsigned Indentation) {
+    Emitter.emitContent(Configuration.LinePrefix);
+    for (unsigned I = 0, C = Indentation; I < C; ++I)
+      Emitter.emitContent(IndentString);
+  }
+
+};
+
+template<CommentEmitter CommentEmitterT>
+class DoxygenCommentEmitter {
+
 
   static constexpr llvm::StringRef IndentString = "  ";
 
   CommentEmitterT Emitter;
+  DoxygenCommentEmitterLow<CommentEmitterT> Low;
+  IndentingEmitter<DoxygenCommentEmitterLow<CommentEmitterT>> Indenter;
   DoxygenCommentConfiguration Configuration;
 
 public:
+
   template<typename... ArgsT>
     requires std::constructible_from<CommentEmitterT, ArgsT...>
   explicit DoxygenCommentEmitter(DoxygenCommentConfiguration Configuration,
                                  ArgsT &&...Args) :
-    Emitter(std::forward<ArgsT>(Args)...), Configuration(Configuration) {
+    Emitter(std::forward<ArgsT>(Args)...), Low(Emitter, Configuration), Indenter(Low), Configuration(Configuration) {
     if (Configuration.CommentHeader) {
       Emitter.emitContent(*Configuration.CommentHeader);
-      IndentingEmitter<DoxygenCommentEmitter>::emitNewline();
+      Indenter.emitNewline();
     }
   }
 
@@ -45,8 +62,8 @@ public:
     Tag.finalizeOpenTag();
 
     llvm::StringRef Signifier(&Configuration.KeywordSignifier, 1);
-    IndentingEmitter<DoxygenCommentEmitter>::emit(Signifier);
-    IndentingEmitter<DoxygenCommentEmitter>::emit(Keyword);
+    Indenter.emit(Signifier);
+    Indenter.emit(Keyword);
   }
 
   DoxygenCommentEmitter(const DoxygenCommentEmitter &) = delete;
@@ -54,30 +71,20 @@ public:
 
   ~DoxygenCommentEmitter() {
     if (Configuration.CommentFooter) {
-      if (not IndentingEmitter<DoxygenCommentEmitter>::isAtBeginningOfLine())
-        IndentingEmitter<DoxygenCommentEmitter>::emitNewline();
+      if (not Indenter.isAtBeginningOfLine())
+        Indenter.emitNewline();
       Emitter.emitContent(*Configuration.CommentFooter);
     }
   }
 
   void emitContent(llvm::StringRef Content) {
-    IndentingEmitter<DoxygenCommentEmitter>::emit(Content);
+    Indenter.emit(Content);
   }
 
   void emitContentNewline() {
-    IndentingEmitter<DoxygenCommentEmitter>::emitNewline();
+    Indenter.emitNewline();
   }
 
-private:
-  //===-------------------- IndentingEmitter interface --------------------===//
-
-  void emitLiteral(llvm::StringRef String) { Emitter.emitContent(String); }
-
-  void emitIndentation(unsigned Indentation) {
-    Emitter.emitContent(Configuration.LinePrefix);
-    for (unsigned I = 0, C = Indentation; I < C; ++I)
-      Emitter.emitContent(IndentString);
-  }
 };
 
 } // namespace ptml

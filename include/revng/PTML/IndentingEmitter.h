@@ -24,10 +24,13 @@ concept IndentingEmitterDerived = requires (Derived &D) {
 
 template<typename Derived>
 class IndentingEmitter {
+  Derived &XXX;
   unsigned Indentation = 0;
   bool IsAtBeginningOfLine = true;
 
 public:
+  IndentingEmitter(Derived &XXX) : XXX(XXX) {}
+
   void indent(int Offset) {
     revng_assert(Offset >= 0 or static_cast<unsigned>(-Offset) <= Indentation,
                  "Offset would result in negative indentation.");
@@ -67,12 +70,12 @@ public:
     IsAtBeginningOfLine = true;
   }
 
-protected:
+public:
   IndentingEmitter() {
     static_assert(detail::IndentingEmitterDerived<Derived>);
   }
 
-  Derived *derived() { return static_cast<Derived *>(this); }
+  Derived *derived() { return &XXX; }
 
   void emitIndentationIfNeeded() {
     if (IsAtBeginningOfLine) {

@@ -569,7 +569,7 @@ void CTokenEmitter::emitIncludeDirective(llvm::StringRef Content,
   PTML.emitContentNewline();
 }
 
-void CTokenEmitter::enterScopeImpl(ptml::Emitter::TagEmitter &Tag,
+void CTokenEmitter::enterScopeImpl(ptml::TagEmitter &Tag,
                                    Delimiter Delimiter,
                                    int Indent,
                                    ScopeKind Kind) {
@@ -584,7 +584,7 @@ void CTokenEmitter::enterScopeImpl(ptml::Emitter::TagEmitter &Tag,
   PTML.indent(Indent);
 }
 
-void CTokenEmitter::leaveScopeImpl(ptml::Emitter::TagEmitter &Tag,
+void CTokenEmitter::leaveScopeImpl(ptml::TagEmitter &Tag,
                                    Delimiter Delimiter,
                                    int Indent) {
   PTML.indent(-Indent);
@@ -595,7 +595,7 @@ void CTokenEmitter::leaveScopeImpl(ptml::Emitter::TagEmitter &Tag,
     emitPunctuator(Symbols->second);
 }
 
-void CTokenEmitter::enterRegionImpl(ptml::Emitter::TagEmitter &Tag,
+void CTokenEmitter::enterRegionImpl(ptml::TagEmitter &Tag,
                                     RegionKind Kind,
                                     llvm::StringRef Location) {
   if (Location.empty())

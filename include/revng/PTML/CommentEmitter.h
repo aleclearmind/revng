@@ -11,7 +11,7 @@ namespace ptml {
 template<typename CommentEmitterT>
 concept CommentEmitter = requires(CommentEmitterT &E, llvm::StringRef S) {
   E.emitContent(S);
-  { E.initializeOpenTag(S) } -> std::same_as<Emitter::TagEmitter>;
+  { E.initializeOpenTag(S) } -> std::same_as<TagEmitter>;
 };
 
 } // namespace ptml

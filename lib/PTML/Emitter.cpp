@@ -59,7 +59,7 @@ void Emitter::emitLiteralContent(llvm::StringRef String) {
   };
   revng_assert(std::ranges::none_of(String, IsNewlineOrRequiresEscaping));
 
-  IndentingEmitter::emitLiteral(String);
+  Indenter.emitLiteral(String);
 }
 
 void Emitter::emitContent(llvm::StringRef String) {
@@ -70,7 +70,7 @@ void Emitter::emitContent(llvm::StringRef String) {
   if (EmitTags)
     emitEscapedContent(String);
   else
-    IndentingEmitter::emit(String);
+    Indenter.emit(String);
 }
 
 template<bool EscapeQuotes>
@@ -83,10 +83,10 @@ void Emitter::emitEscapedContent(llvm::StringRef String) {
       return requiresEscaping<EscapeQuotes>(Character);
     });
 
-    IndentingEmitter::emit(std::string_view(Begin, Pos));
+    Indenter.emit(std::string_view(Begin, Pos));
 
     if (Pos != End)
-      OS << getEscape(*Pos++);
+     OS << getEscape(*Pos++);
 
     Begin = Pos;
   }
@@ -96,11 +96,11 @@ void Emitter::emitAttributeValue(llvm::StringRef String) {
   emitEscapedContent</*EscapeQuotes=*/true>(String);
 }
 
-void Emitter::emitLiteral(llvm::StringRef String) {
+void EmitterLow::emitLiteral(llvm::StringRef String) {
   OS << String;
 }
 
-void Emitter::emitIndentation(unsigned Indentation) {
+void EmitterLow::emitIndentation(unsigned Indentation) {
   if (Indentation != 0) {
     TagEmitter Tag;
 
@@ -124,7 +124,7 @@ void TagEmitter::initializeOpenTagImpl(Emitter &ParentEmitter,
   this->IsOpenTagFinalized = false;
 
   if (ParentEmitter.EmitTags) {
-    ParentEmitter.emitIndentationIfNeeded();
+    ParentEmitter.Indenter.emitIndentationIfNeeded();
     ParentEmitter.OS << '<' << Tag;
   }
 

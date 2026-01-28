@@ -16,6 +16,17 @@ enum class Tagging : bool {
   Enabled,
 };
 
+class TagEmitter;
+
+struct EmitterLow {
+  llvm::raw_ostream &OS;
+  bool EmitTags = false;
+  const TagEmitter *CurrentOpenTagEmitter = nullptr;
+
+  void emitLiteral(llvm::StringRef String);
+  void emitIndentation(unsigned Indentation);
+};
+
 /// \brief Provides a streaming interface for emitting PTML tags and content.
 ///
 /// Underlying byte-IO is done via the provided llvm::raw_ostream reference.
@@ -28,20 +39,15 @@ enum class Tagging : bool {
 /// PTML tag emission can be toggled using the ptml::Tagging parameter. Note
 /// that valid usage of the PTML tag emission interface is checked regardless
 /// of whether PTML tag emission is enabled.
-class Emitter : IndentingEmitter<Emitter> {
-  friend IndentingEmitter;
-
-public:
-  class TagEmitter;
-
+class Emitter : public EmitterLow {
 private:
-  llvm::raw_ostream &OS;
-  bool EmitTags = false;
-  const TagEmitter *CurrentOpenTagEmitter = nullptr;
+  public:
+  IndentingEmitter<EmitterLow> Indenter;
 
 public:
   explicit Emitter(llvm::raw_ostream &OS, Tagging Tags) :
-    OS(OS), EmitTags(Tags == Tagging::Enabled) {}
+    EmitterLow(OS, Tags == Tagging::Enabled), Indenter(*this) {}
+
 
   [[nodiscard]] bool isTagged() const { return EmitTags; }
 
@@ -53,14 +59,14 @@ public:
     revng_assert(CurrentOpenTagEmitter == nullptr,
                  "Content shall not emitted while an opening tag is "
                  "unfinalized.");
-    return emitNewline();
+    return Indenter.emitNewline();
   }
 
   void emitContent(llvm::StringRef String);
 
-  using IndentingEmitter::indent;
-  using IndentingEmitter::indentation;
-  using IndentingEmitter::isAtBeginningOfLine;
+  auto indent(int Offset) { return Indenter.indent(Offset); }
+  auto indentation() { return Indenter.indentation(); }
+  auto isAtBeginningOfLine() { return Indenter.isAtBeginningOfLine(); }
 
   [[nodiscard]] TagEmitter initializeOpenTag(llvm::StringRef Tag);
 
@@ -68,12 +74,9 @@ private:
   template<bool EscapeQuotes = false>
   void emitEscapedContent(llvm::StringRef String);
 
+public:
   void emitAttributeValue(llvm::StringRef String);
 
-  //===-------------------- IndentingEmitter interface --------------------===//
-
-  void emitLiteral(llvm::StringRef String);
-  void emitIndentation(unsigned Indentation);
 };
 
 /// \brief RAII object used for emitting PTML tags.
@@ -109,7 +112,7 @@ private:
 ///
 /// At any given time, the emitter may be associated with multiple TagEmitters
 /// but only the innermost can have an unfinalized open tag.
-class Emitter::TagEmitter {
+class TagEmitter {
   Emitter *ParentEmitter;
   llvm::StringRef Tag;
   bool IsOpenTagFinalized = false;
@@ -136,6 +139,7 @@ public:
     revng_assert(ParentEmitter.CurrentOpenTagEmitter == nullptr,
                  "The parent Emitter is already associated with an "
                  "unfinalized TagEmitter.");
+
 
     initializeOpenTagImpl(ParentEmitter, Tag);
     return *this;
@@ -191,10 +195,9 @@ private:
   void closeImpl();
 };
 
-inline Emitter::TagEmitter Emitter::initializeOpenTag(llvm::StringRef Tag) {
+inline TagEmitter Emitter::initializeOpenTag(llvm::StringRef Tag) {
   return TagEmitter(*this, Tag);
 }
 
-using TagEmitter = Emitter::TagEmitter;
 
 } // namespace ptml
