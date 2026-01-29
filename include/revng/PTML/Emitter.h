@@ -21,7 +21,6 @@ class TagEmitter;
 struct EmitterLow {
   llvm::raw_ostream &OS;
   bool EmitTags = false;
-  const TagEmitter *CurrentOpenTagEmitter = nullptr;
 
   void emitLiteral(llvm::StringRef String);
   void emitIndentation(unsigned Indentation);
@@ -39,17 +38,18 @@ struct EmitterLow {
 /// PTML tag emission can be toggled using the ptml::Tagging parameter. Note
 /// that valid usage of the PTML tag emission interface is checked regardless
 /// of whether PTML tag emission is enabled.
-class Emitter : public EmitterLow {
+class Emitter : EmitterLow {
 private:
-  public:
+public:
   IndentingEmitter<EmitterLow> Indenter;
+  const TagEmitter *CurrentOpenTagEmitter = nullptr;
 
 public:
   explicit Emitter(llvm::raw_ostream &OS, Tagging Tags) :
     EmitterLow(OS, Tags == Tagging::Enabled), Indenter(*this) {}
 
-
   [[nodiscard]] bool isTagged() const { return EmitTags; }
+  auto &os() { return OS; }
 
   // Emit the specified content literally. The string shall not contain newlines
   // or characters requiring HTML escape sequences (<, >, &).
@@ -76,7 +76,6 @@ private:
 
 public:
   void emitAttributeValue(llvm::StringRef String);
-
 };
 
 /// \brief RAII object used for emitting PTML tags.
@@ -140,7 +139,6 @@ public:
                  "The parent Emitter is already associated with an "
                  "unfinalized TagEmitter.");
 
-
     initializeOpenTagImpl(ParentEmitter, Tag);
     return *this;
   }
@@ -198,6 +196,5 @@ private:
 inline TagEmitter Emitter::initializeOpenTag(llvm::StringRef Tag) {
   return TagEmitter(*this, Tag);
 }
-
 
 } // namespace ptml

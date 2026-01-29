@@ -202,8 +202,7 @@ public:
 
     ~CommentEmitter();
 
-    [[nodiscard]] ptml::TagEmitter
-    initializeOpenTag(llvm::StringRef Tag) {
+    [[nodiscard]] ptml::TagEmitter initializeOpenTag(llvm::StringRef Tag) {
       return ptml::TagEmitter(Emitter.PTML, Tag);
     }
 
@@ -301,9 +300,7 @@ private:
                       int Indent,
                       ScopeKind Kind);
 
-  void leaveScopeImpl(ptml::TagEmitter &Tag,
-                      Delimiter Delimiter,
-                      int Indent);
+  void leaveScopeImpl(ptml::TagEmitter &Tag, Delimiter Delimiter, int Indent);
 
   void enterRegionImpl(ptml::TagEmitter &Tag,
                        RegionKind Kind,

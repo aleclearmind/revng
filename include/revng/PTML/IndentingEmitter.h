@@ -15,7 +15,7 @@ namespace ptml {
 namespace detail {
 
 template<typename Derived>
-concept IndentingEmitterDerived = requires (Derived &D) {
+concept IndentingEmitterDerived = requires(Derived &D) {
   D.emitLiteral(llvm::StringRef());
   D.emitIndentation(static_cast<unsigned>(0));
 };

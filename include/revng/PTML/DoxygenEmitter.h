@@ -29,12 +29,10 @@ struct DoxygenCommentEmitterLow {
     for (unsigned I = 0, C = Indentation; I < C; ++I)
       Emitter.emitContent(IndentString);
   }
-
 };
 
 template<CommentEmitter CommentEmitterT>
 class DoxygenCommentEmitter {
-
 
   static constexpr llvm::StringRef IndentString = "  ";
 
@@ -44,12 +42,14 @@ class DoxygenCommentEmitter {
   DoxygenCommentConfiguration Configuration;
 
 public:
-
   template<typename... ArgsT>
     requires std::constructible_from<CommentEmitterT, ArgsT...>
   explicit DoxygenCommentEmitter(DoxygenCommentConfiguration Configuration,
                                  ArgsT &&...Args) :
-    Emitter(std::forward<ArgsT>(Args)...), Low(Emitter, Configuration), Indenter(Low), Configuration(Configuration) {
+    Emitter(std::forward<ArgsT>(Args)...),
+    Low(Emitter, Configuration),
+    Indenter(Low),
+    Configuration(Configuration) {
     if (Configuration.CommentHeader) {
       Emitter.emitContent(*Configuration.CommentHeader);
       Indenter.emitNewline();
@@ -77,14 +77,9 @@ public:
     }
   }
 
-  void emitContent(llvm::StringRef Content) {
-    Indenter.emit(Content);
-  }
+  void emitContent(llvm::StringRef Content) { Indenter.emit(Content); }
 
-  void emitContentNewline() {
-    Indenter.emitNewline();
-  }
-
+  void emitContentNewline() { Indenter.emitNewline(); }
 };
 
 } // namespace ptml

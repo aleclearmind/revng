@@ -86,7 +86,7 @@ void Emitter::emitEscapedContent(llvm::StringRef String) {
     Indenter.emit(std::string_view(Begin, Pos));
 
     if (Pos != End)
-     OS << getEscape(*Pos++);
+      OS << getEscape(*Pos++);
 
     Begin = Pos;
   }
@@ -105,7 +105,7 @@ void EmitterLow::emitIndentation(unsigned Indentation) {
     TagEmitter Tag;
 
     if (EmitTags) {
-      Tag.initializeOpenTag(*this, ptml::tags::Span);
+      // Tag.initializeOpenTag(*this, ptml::tags::Span);
       Tag.emitAttribute(ptml::attributes::Token, ptml::tokens::Indentation);
       Tag.finalizeOpenTag();
     }
@@ -123,9 +123,9 @@ void TagEmitter::initializeOpenTagImpl(Emitter &ParentEmitter,
   this->Tag = Tag;
   this->IsOpenTagFinalized = false;
 
-  if (ParentEmitter.EmitTags) {
+  if (ParentEmitter.isTagged()) {
     ParentEmitter.Indenter.emitIndentationIfNeeded();
-    ParentEmitter.OS << '<' << Tag;
+    ParentEmitter.os() << '<' << Tag;
   }
 
   ParentEmitter.CurrentOpenTagEmitter = this;
@@ -135,10 +135,10 @@ void TagEmitter::emitAttributeImpl(llvm::StringRef Name,
                                    llvm::StringRef Value) {
   revng_assert(ParentEmitter->CurrentOpenTagEmitter == this);
 
-  if (ParentEmitter->EmitTags) {
-    ParentEmitter->OS << ' ' << Name << '=' << '"';
+  if (ParentEmitter->isTagged()) {
+    ParentEmitter->os() << ' ' << Name << '=' << '"';
     ParentEmitter->emitAttributeValue(Value);
-    ParentEmitter->OS << '"';
+    ParentEmitter->os() << '"';
   }
 }
 
@@ -146,8 +146,8 @@ void TagEmitter::emitListAttributeImpl(llvm::StringRef Name,
                                        llvm::ArrayRef<llvm::StringRef> Values) {
   revng_assert(ParentEmitter->CurrentOpenTagEmitter == this);
 
-  if (ParentEmitter->EmitTags) {
-    ParentEmitter->OS << ' ' << Name << '=' << '"';
+  if (ParentEmitter->isTagged()) {
+    ParentEmitter->os() << ' ' << Name << '=' << '"';
 
     bool InsertComma = false;
     for (llvm::StringRef Value : Values) {
@@ -155,13 +155,13 @@ void TagEmitter::emitListAttributeImpl(llvm::StringRef Name,
                    "List attribute values shall not contain commas.");
 
       if (InsertComma)
-        ParentEmitter->OS << ',';
+        ParentEmitter->os() << ',';
       InsertComma = true;
 
       ParentEmitter->emitAttributeValue(Value);
     }
 
-    ParentEmitter->OS << '"';
+    ParentEmitter->os() << '"';
   }
 }
 
@@ -169,8 +169,8 @@ void TagEmitter::finalizeOpenTagImpl() {
   if (not IsOpenTagFinalized) {
     revng_assert(ParentEmitter->CurrentOpenTagEmitter == this);
 
-    if (ParentEmitter->EmitTags)
-      ParentEmitter->OS << '>';
+    if (ParentEmitter->isTagged())
+      ParentEmitter->os() << '>';
     IsOpenTagFinalized = true;
 
     ParentEmitter->CurrentOpenTagEmitter = nullptr;
@@ -181,8 +181,8 @@ void TagEmitter::closeImpl() {
   if (ParentEmitter != nullptr) {
     finalizeOpenTagImpl();
 
-    if (ParentEmitter->EmitTags)
-      ParentEmitter->OS << '<' << '/' << Tag << '>';
+    if (ParentEmitter->isTagged())
+      ParentEmitter->os() << '<' << '/' << Tag << '>';
   }
   ParentEmitter = nullptr;
 }

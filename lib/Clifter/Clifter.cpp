@@ -1884,8 +1884,7 @@ public:
     Builder.setInsertionPointToEnd(&BodyBlock);
 
     // Finally emit the function body starting at the entry block.
-    emitScope(&F->getEntryBlock(),
-              CF->PostDomTree.getRootNode()->getBlock());
+    emitScope(&F->getEntryBlock(), CF->PostDomTree.getRootNode()->getBlock());
 
     BodyBlock.getOperations().splice(BodyBlock.getOperations().begin(),
                                      CF->LocalDeclarationBlock.getOperations());
