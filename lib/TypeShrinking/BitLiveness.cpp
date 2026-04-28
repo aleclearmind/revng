@@ -14,6 +14,7 @@
 
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/BitVector.h"
+#include "llvm/ADT/GraphTraits.h"
 #include "llvm/IR/AssemblyAnnotationWriter.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/Instruction.h"
@@ -277,11 +278,11 @@ BitLivenessPass::Result BitLivenessPass::run(llvm::Function &F,
     }
   }
 
-  auto MFPRes = MFP::getMaximalFixedPoint<BitLivenessAnalysis>({},
-                                                               &DataFlowGraph,
-                                                               0,
-                                                               Top,
-                                                               ExtremalLabels);
+  auto MFPRes = MFP::getMaximalFixedPoint<
+    BitLivenessAnalysis>({ .Flow = &DataFlowGraph,
+                           .ExtremalValue = &Top,
+                           .ExtremalLabels = &ExtremalLabels });
+  static_assert(MFP::HasNodeRange<llvm::GraphTraits<typename BitLivenessAnalysis::GraphType>>);
   BitLivenessPass::Result Result;
   for (auto &[Label, MFPResult] : MFPRes) {
     auto &Entry = Result[Label->Instruction];

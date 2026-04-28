@@ -315,13 +315,13 @@ runAVI(const DataFlowGraph &DFG,
     ExtremalValue[I] = ConstantRangeSet(I->getType()->getIntegerBitWidth(),
                                         true);
 
-  auto AllResults = MFP::getMaximalFixedPoint(AVIMFI,
-                                              &CFEG,
-                                              {},
-                                              ExtremalValue,
-                                              InitialNodes,
-                                              InitialNodes,
-                                              AVILogger);
+  auto AllResults = MFP::getMaximalFixedPoint<
+    AdvancedValueInfoMFI>({ .Instance = &AVIMFI,
+                            .Flow = &CFEG,
+                            .ExtremalValue = &ExtremalValue,
+                            .ExtremalLabels = &InitialNodes,
+                            .EntryLabels = &InitialNodes,
+                            .Logger = &AVILogger });
 
   if (AVILogger.isEnabled()) {
     AVILogger << "Dumping MFP results:" << DoLog;

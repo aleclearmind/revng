@@ -247,6 +247,8 @@ struct SegregateStackAccessesMFI : public SetUnionLattice<Lattice> {
   }
 };
 
+static_assert(MFP::MonotoneFrameworkInstance<SegregateStackAccessesMFI>);
+
 struct SortByFunction {
   bool operator()(const Instruction *LHS, const Instruction *RHS) const {
     using std::make_pair;
@@ -855,11 +857,9 @@ private:
       LoggerIndent Indent(Log);
       using SSAMFI = SegregateStackAccessesMFI;
       BasicBlock *Entry = &F.getEntryBlock();
-      AnalysisResult = MFP::getMaximalFixedPoint<SSAMFI>({},
-                                                         &F,
-                                                         {},
-                                                         {},
-                                                         { Entry });
+      std::vector ExtremalLabels = { Entry };
+      AnalysisResult = MFP::getMaximalFixedPoint<
+        SSAMFI>({ .Flow = &F, .ExtremalLabels = &ExtremalLabels });
     }
 
     //

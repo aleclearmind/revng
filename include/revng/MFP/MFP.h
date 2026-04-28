@@ -1,5 +1,7 @@
 #pragma once
 
+#pragma clang optimize off
+
 //
 // This file is distributed under the MIT License. See LICENSE.md for details.
 //
@@ -20,6 +22,7 @@
 #include "revng/ADT/GenericGraph.h"
 #include "revng/ADT/ReversePostOrderTraversal.h"
 
+// WIP: lowercase
 namespace MFP {
 
 inline Logger NullLogger("");
@@ -64,12 +67,105 @@ concept MonotoneFrameworkInstance = requires(const MFI &I,
   { I.applyTransferFunction(L, E2) } -> std::same_as<LatticeElement>;
 };
 
+template<typename GT>
+concept HasNodeRange = requires() {
+  { GT::nodes_begin };
+  { GT::nodes_end };
+};
+
 template<typename Label, typename LatticeElement>
 using ResultMap = std::map<Label, MFPResult<LatticeElement>>;
 
 template<MonotoneFrameworkInstance MFI>
 using MFIResultMap = ResultMap<typename MFI::Label,
                                typename MFI::LatticeElement>;
+
+/// Compute the solution to the given instance of a monotone framework.
+///
+/// \tparam MFIType the type of the monotone framework instance. See the
+//          MonotoneFrameworkInstance concept.
+/// \tparam GT the GraphTraits to use to use. Defaults to
+///         GraphTraits<MFIType::GraphType>. To navigate the inverse graph pass
+///         GraphTraits<Inverse<...>>.
+///
+/// \param MFI the monotone framework instance.
+/// \param Flow the graph on which the monotone framework will run.
+/// \param Bottom the value that will be used to initialize all the non-extremal
+//         nodes.
+/// \param ExtremalValue
+/// \param ExtremalLabels
+/// \param EntryNodes
+/// \param Logger a logger where the advancement of the MFP algorithm should be
+//         reported.
+
+// WIP: reorder arguments
+// WIP: can we make InitialNodes optional (instead of having an overload)?
+
+// include/revng/RestructureCFG/RegionCFGTreeImpl.h
+// ({}, &Graph, {}, {}, {}, Exits)
+
+// lib/Canonicalize/SwitchToStatements.cpp
+// ({},
+//   TheGraph,
+//   Bottom,
+//   Empty,
+//   { TheGraph->getEntryNode() })
+
+// lib/EarlyFunctionAnalysis/AnalyzeRegisterUsage.cpp
+// (Liveness,
+// &Function.Function,
+// Liveness.defaultValue(),
+// Liveness.defaultValue(),
+// { Function.ReturnNode })
+
+// (ReachingDefinitions,
+// &Function.Function,
+// DefaultValue,
+// DefaultValue,
+// { EntryNode })
+
+// // lib/FunctionIsolation/PromoteCSVs.cpp
+// ({},
+// &CallGraph,
+// {},
+// {},
+// {},
+// {})
+// // lib/PromoteStackPointer/SegregateStackAccessesPass.cpp
+// ({},
+// &F,
+// {},
+// {},
+// { Entry })
+
+// // lib/TypeShrinking/BitLiveness.cpp
+// ({},
+// &DataFlowGraph,
+// 0,
+// Top,
+// ExtremalLabels)
+
+// // lib/ValueMaterializer/AdvancedValueInfo.cpp
+// (AVIMFI,
+// &CFEG,
+// {},
+// ExtremalValue,
+// InitialNodes,
+// InitialNodes,
+// AVILogger)
+
+// // tests/unit/RegisterUsageAnalyses.cpp
+// (LA,
+// &Function,
+// LA.defaultValue(),
+// LA.defaultValue(),
+// { Entry })
+
+// (RD,
+// &F.Function,
+// RD.defaultValue(),
+// RD.defaultValue(),
+// { F.Entry })
 
 /// Compute the maximum fixed points of an instance of monotone framework GT an
 /// instance of llvm::GraphTraits that tells us how to visit the graph LGT a
@@ -78,36 +174,17 @@ using MFIResultMap = ResultMap<typename MFI::Label,
 /// Inverse<...>) the nodes don't necessary carry all the information that
 /// GraphType has.
 template<MonotoneFrameworkInstance MFIType,
-         typename GT = llvm::GraphTraits<typename MFIType::GraphType>,
-         typename LGT = typename MFIType::Label>
+         typename GT = llvm::GraphTraits<typename MFIType::GraphType>>
 MFIResultMap<MFIType>
-getMaximalFixedPoint(const MFIType &MFI,
+getMaximalFixedPointImpl(const MFIType &MFI,
                      typename MFIType::GraphType Flow,
-                     typename MFIType::LatticeElement InitialValue,
+                     typename MFIType::LatticeElement Bottom,
                      typename MFIType::LatticeElement ExtremalValue,
                      const std::vector<typename MFIType::Label> &ExtremalLabels,
-                     const std::vector<typename MFIType::Label> &InitialNodes,
+                     const std::vector<typename MFIType::Label> &EntryNodes,
                      Logger &Logger = NullLogger) {
   using Label = typename MFIType::Label;
   using LatticeElement = typename MFIType::LatticeElement;
-
-  std::map<Label, LatticeElement> PartialAnalysis;
-  std::map<Label, MFPResult<LatticeElement>> AnalysisResult;
-
-  struct WorklistItem {
-    size_t Priority;
-    Label Item;
-
-    std::weak_ordering operator<=>(const WorklistItem &) const = default;
-  };
-  std::set<WorklistItem> Worklist;
-
-  llvm::SmallSet<Label, 8> Visited{};
-  std::map<Label, size_t> LabelPriority;
-
-  //
-  // Initialize the worklist and extremal labels
-  //
 
   if (Logger.isEnabled()) {
     revng_log(Logger, "Initializing extremal labels");
@@ -122,42 +199,61 @@ getMaximalFixedPoint(const MFIType &MFI,
       MFP::dumpLabel(*Logger.getAsLLVMStream(), ExtremalLabel);
       Logger << DoLog;
     }
-  }
 
-  for (Label ExtremalLabel : ExtremalLabels)
-    AnalysisResult[ExtremalLabel].InValue = ExtremalValue;
-
-  if (Logger.isEnabled()) {
     revng_log(Logger, "Initializing initial nodes");
-    LoggerIndent Indent(Logger);
+    LoggerIndent Indent3(Logger);
     Logger << "Initial value:\n";
-    MFP::dump(*Logger.getAsLLVMStream(), 1, InitialValue);
+    MFP::dump(*Logger.getAsLLVMStream(), 1, Bottom);
     Logger << DoLog;
 
     Logger << "Initial labels:" << DoLog;
-    LoggerIndent Indent2(Logger);
-    for (Label InitialNode : InitialNodes) {
+    LoggerIndent Indent4(Logger);
+    for (Label InitialNode : EntryNodes) {
       MFP::dumpLabel(*Logger.getAsLLVMStream(), InitialNode);
       Logger << DoLog;
     }
   }
 
-  for (Label Start : InitialNodes) {
+  std::map<Label, MFPResult<LatticeElement>> AnalysisResult;
 
-    if (Visited.contains(Start))
-      continue;
+  // Initialize the state of the analysis: associate extremal labels to extremal
+  // values
+  for (Label ExtremalLabel : ExtremalLabels)
+    AnalysisResult[ExtremalLabel].InValue = ExtremalValue;
 
-    // Fill the worklist with nodes in reverse post order launching a visit
-    // from each remaining node
-    ReversePostOrderTraversalExt<LGT, GT, llvm::SmallSet<Label, 8>>
-      RPOTE(Start, Visited);
-    for (Label Node : RPOTE) {
-      LabelPriority[Node] = LabelPriority.size();
-      Worklist.insert({ LabelPriority.at(Node), Node });
+  struct WorklistItem {
+    size_t Priority;
+    Label Item;
 
-      // Initialize the analysis value for non extremal nodes
-      if (!AnalysisResult.contains(Node))
-        AnalysisResult[Node].InValue = InitialValue;
+    std::weak_ordering operator<=>(const WorklistItem &) const = default;
+  };
+  std::set<WorklistItem> Worklist;
+  std::map<Label, size_t> LabelPriority;
+
+  //
+  // Initialize the worklist with the nodes in reverse post order.
+  // Also, record the visit order as priority.
+  //
+  // If the graph has multiple initial nodes, we perform a reverse post order
+  // visit from each initial node, sharing the list of visited nodes with
+  // previous visits.
+  {
+    using NodeSet = llvm::SmallSet<Label, 8>;
+    NodeSet Visited;
+    for (Label Start : EntryNodes) {
+
+      if (Visited.contains(Start))
+        continue;
+
+      ReversePostOrderTraversalExt<Label, GT, NodeSet> RPOT(Start, Visited);
+      for (Label Node : RPOT) {
+        LabelPriority[Node] = LabelPriority.size();
+        Worklist.insert({ LabelPriority.at(Node), Node });
+
+        // Initialize the analysis value for non extremal nodes
+        if (not AnalysisResult.contains(Node))
+          AnalysisResult[Node].InValue = Bottom;
+      }
     }
   }
 
@@ -256,9 +352,9 @@ getMaximalFixedPoint(const MFIType &MFI,
   return AnalysisResult;
 }
 
+#if 0
 template<MonotoneFrameworkInstance MFI,
-         typename GT = llvm::GraphTraits<typename MFI::GraphType>,
-         typename LGT = typename MFI::Label>
+         typename GT = llvm::GraphTraits<typename MFI::GraphType>>
 MFIResultMap<MFI>
 getMaximalFixedPoint(const MFI &Instance,
                      typename MFI::GraphType Flow,
@@ -270,22 +366,103 @@ getMaximalFixedPoint(const MFI &Instance,
   std::vector<Label> InitialNodes(ExtremalLabels);
 
   // Handle the special case that the graph has a single entry node
-  if (GT::getEntryNode(Flow) != typename GT::NodeRef{}) {
+  if (GT::getEntryNode(Flow) != typename GT::NodeRef{})
     InitialNodes.push_back(GT::getEntryNode(Flow));
-  }
-  // Start visits for nodes that we still haven't visited
-  // prioritizing extremal nodes
+
+  // Start visits for nodes that we still haven't visited prioritizing extremal
+  // nodes
   for (Label Node :
        llvm::make_range(GT::nodes_begin(Flow), GT::nodes_end(Flow))) {
     InitialNodes.push_back(Node);
   }
-  return getMaximalFixedPoint<MFI, GT, LGT>(Instance,
-                                            Flow,
-                                            InitialValue,
-                                            ExtremalValue,
-                                            ExtremalLabels,
-                                            InitialNodes,
-                                            Logger);
+
+  return getMaximalFixedPoint<MFI, GT>(Instance,
+                                       Flow,
+                                       InitialValue,
+                                       ExtremalValue,
+                                       ExtremalLabels,
+                                       InitialNodes,
+                                       Logger);
+}
+#endif
+
+template<MonotoneFrameworkInstance MFIType>
+struct MFPConfiguration {
+  const MFIType *Instance = nullptr;
+  typename MFIType::GraphType Flow;
+  const typename MFIType::LatticeElement *Bottom = nullptr;
+  const typename MFIType::LatticeElement *ExtremalValue = nullptr;
+  const std::vector<typename MFIType::Label> *ExtremalLabels = nullptr;
+  const std::vector<typename MFIType::Label> *EntryLabels = nullptr;
+  Logger *Logger = nullptr;
+};
+
+template<MonotoneFrameworkInstance MFIType,
+         typename GT = llvm::GraphTraits<typename MFIType::GraphType>>
+MFIResultMap<MFIType>
+getMaximalFixedPoint(MFPConfiguration<MFIType> Configuration) {
+  std::optional<MFIType> DefaultInstance;
+  if constexpr (std::is_default_constructible_v<MFIType>) {
+    if (Configuration.Instance == nullptr)
+      Configuration.Instance = &DefaultInstance.emplace();
+  } else {
+    revng_assert(Configuration.Instance != nullptr);
+  }
+
+  using LatticElement = typename MFIType::LatticeElement;
+  std::optional<LatticElement> DefaultBottom;
+  std::optional<typename MFIType::LatticeElement> DefaultExtremalValue;
+  if constexpr (std::is_default_constructible_v<LatticElement>) {
+
+    if (Configuration.Bottom == nullptr)
+      Configuration.Bottom = &DefaultBottom.emplace();
+
+    if (Configuration.ExtremalValue == nullptr)
+      Configuration.ExtremalValue = &DefaultExtremalValue.emplace();
+
+  } else {
+    revng_assert(Configuration.Bottom != nullptr);
+    revng_assert(Configuration.ExtremalValue != nullptr);
+  }
+
+  std::vector<typename MFIType::Label> DefaultExtremalLabels;
+  if (Configuration.ExtremalLabels == nullptr)
+    Configuration.ExtremalLabels = &DefaultExtremalLabels;
+
+  std::vector<typename MFIType::Label> DefaultEntryNodes;
+  if (Configuration.EntryLabels == nullptr) {
+    auto Entry = GT::getEntryNode(Configuration.Flow);
+
+    // If we have an entry point, use it, otherwise add all the nodes
+    if (Entry != typename GT::NodeRef{}) {
+      DefaultEntryNodes.push_back(Entry);
+    } 
+    // WIP: else
+     {
+      if constexpr (HasNodeRange<GT>) {
+        auto Flow = Configuration.Flow;
+        for (auto Node :
+            llvm::make_range(GT::nodes_begin(Flow), GT::nodes_end(Flow))) {
+          DefaultEntryNodes.push_back(Node);
+        }
+      } else {
+        revng_abort();
+      }
+    }
+
+    Configuration.EntryLabels = &DefaultEntryNodes;
+  }
+
+  if (Configuration.Logger == nullptr)
+    Configuration.Logger = &NullLogger;
+
+  return getMaximalFixedPointImpl<MFIType, GT>(*Configuration.Instance,
+                                           Configuration.Flow,
+                                           *Configuration.Bottom,
+                                           *Configuration.ExtremalValue,
+                                           *Configuration.ExtremalLabels,
+                                           *Configuration.EntryLabels,
+                                           *Configuration.Logger);
 }
 
 } // namespace MFP

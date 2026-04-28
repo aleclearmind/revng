@@ -261,11 +261,16 @@ RUAResults analyzeRegisterUsage(Function *F,
     // Run the liveness analysis
     revng_log(Log, "Running Liveness");
     rua::Liveness Liveness(Function.Function);
-    auto AnalysisResult = MFP::getMaximalFixedPoint(Liveness,
-                                                    &Function.Function,
-                                                    Liveness.defaultValue(),
-                                                    Liveness.defaultValue(),
-                                                    { Function.ReturnNode });
+
+    auto DefaultValue = Liveness.defaultValue();
+    std::vector<const rua::BlockNode *> ExtremalLabels{ Function.ReturnNode };
+
+    auto AnalysisResult = MFP::getMaximalFixedPoint<
+      rua::Liveness>({ .Instance = &Liveness,
+                       .Flow = &Function.Function,
+                       .Bottom = &DefaultValue,
+                       .ExtremalValue = &DefaultValue,
+                       .ExtremalLabels = &ExtremalLabels });
 
     // Collect registers alive at the entry
     revng_log(Log, "Registers alive at the entry of the function:");
@@ -303,11 +308,15 @@ RUAResults analyzeRegisterUsage(Function *F,
     rua::ReachingDefinitions ReachingDefinitions(Function.Function);
     auto DefaultValue = ReachingDefinitions.defaultValue();
     auto *EntryNode = Function.Function.getEntryNode();
-    auto AnalysisResult = MFP::getMaximalFixedPoint(ReachingDefinitions,
-                                                    &Function.Function,
-                                                    DefaultValue,
-                                                    DefaultValue,
-                                                    { EntryNode });
+    std::vector ExtremalLabels{ EntryNode };
+
+    auto AnalysisResult = MFP::getMaximalFixedPoint<
+      rua::ReachingDefinitions>(MFP::MFPConfiguration<rua::ReachingDefinitions>{
+      .Instance = &ReachingDefinitions,
+      .Flow = &Function.Function,
+      .Bottom = &DefaultValue,
+      .ExtremalValue = &DefaultValue,
+      .ExtremalLabels = &ExtremalLabels });
 
     auto Compute = [&AnalysisResult, &Function](rua::Function::Node *Node,
                                                 bool Before) {

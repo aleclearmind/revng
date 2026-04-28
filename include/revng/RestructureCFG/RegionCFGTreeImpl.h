@@ -763,8 +763,8 @@ inline bool RegionCFG<NodeT>::inflate() {
   using Inverse = llvm::Inverse<typename REA::GraphType>;
   auto ReachableExits = MFP::getMaximalFixedPoint<
     REA,
-    llvm::GraphTraits<Inverse>,
-    llvm::Inverse<BasicBlockNode<NodeT> *>>({}, &Graph, {}, {}, {}, Exits);
+    llvm::GraphTraits<Inverse>>(MFP::MFPConfiguration<REA>{
+    .Flow = &Graph, .EntryLabels = &Exits });
 
   // Refresh information of dominator and postdominator trees.
   DT.recalculate(Graph);

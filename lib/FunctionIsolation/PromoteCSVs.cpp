@@ -534,12 +534,8 @@ CSVsUsageMap PromoteCSVs::getUsedCSVs(ArrayRef<CallInst *> CallsRange) {
     }
   }
 
-  auto AnalysisResult = getMaximalFixedPoint<UsedRegistersMFI>({},
-                                                               &CallGraph,
-                                                               {},
-                                                               {},
-                                                               {},
-                                                               {});
+  auto AnalysisResult = getMaximalFixedPoint<
+    UsedRegistersMFI>({ .Flow = &CallGraph });
 
   // Populate results set
   for (auto &[Label, Value] : AnalysisResult) {

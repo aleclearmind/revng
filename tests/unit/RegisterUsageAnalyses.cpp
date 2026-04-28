@@ -128,11 +128,14 @@ createNoReturn(rua::Block::OperationsVector &&Header,
 BOOST_AUTO_TEST_CASE(LivenessTest) {
   auto RunAnalysis = [](rua::Function &Function, BlockNode *Entry) {
     Liveness LA(Function);
-    return MFP::getMaximalFixedPoint(LA,
-                                     &Function,
-                                     LA.defaultValue(),
-                                     LA.defaultValue(),
-                                     { Entry });
+    auto DefaultValue = LA.defaultValue();
+    std::vector<const BidirectionalNode<Block> *> ExtremalLabels{ Entry };
+    return MFP::getMaximalFixedPoint<Liveness>(MFP::MFPConfiguration<Liveness>{
+      .Instance = &LA,
+      .Flow = &Function,
+      .Bottom = &DefaultValue,
+      .ExtremalValue = &DefaultValue,
+      .ExtremalLabels = &ExtremalLabels });
   };
 
   auto RunOnSingleNode =
@@ -274,11 +277,14 @@ BOOST_AUTO_TEST_CASE(LivenessTest) {
 BOOST_AUTO_TEST_CASE(ReachingDefinitionsTest) {
   auto RunAnalysis = [](TestAnalysisResult &&F) {
     ReachingDefinitions RD(F.Function);
-    auto Results = MFP::getMaximalFixedPoint(RD,
-                                             &F.Function,
-                                             RD.defaultValue(),
-                                             RD.defaultValue(),
-                                             { F.Entry });
+    auto DefaultValue = RD.defaultValue();
+    std::vector ExtremalLabels{ F.Entry };
+    auto
+      Results = MFP::getMaximalFixedPoint<ReachingDefinitions>({ .Instance = &RD,
+                                           .Flow = &F.Function,
+                                           .Bottom = &DefaultValue,
+                                           .ExtremalValue = &DefaultValue,
+                                           .ExtremalLabels = &ExtremalLabels });
     return ReachingDefinitions::compute(Results[F.Exit].OutValue,
                                         Results[F.Sink].OutValue);
   };
