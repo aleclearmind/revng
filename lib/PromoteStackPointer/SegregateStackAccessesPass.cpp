@@ -398,6 +398,8 @@ public:
     llvm::Function &NewFunction = upgradeLocalFunction(&Function);
     segregateStackAccesses(NewFunction);
 
+    NewFunction.dump();
+
     return true;
   }
 
@@ -865,6 +867,7 @@ private:
     //
     // Handle a call to an isolated function
     //
+    revng_log(Log, "Handling call sites");
     if (SSACS != nullptr)
       for (BasicBlock &BB : F)
         for (Instruction &I : BB)
@@ -874,6 +877,7 @@ private:
     //
     // Handle memory access, possibly targeting formal stack arguments
     //
+    revng_log(Log, "Handling memory accesses");
     if (Redirector != nullptr)
       for (BasicBlock &BB : F)
         for (Instruction &I : BB)
@@ -904,6 +908,7 @@ private:
   }
 
   void handleCallSite(MFIResult &AnalysisResult, CallInst *SSACSCall) {
+    revng_log(Log, "Analyzing call to SSACS " << getName(SSACSCall));
     LoggerIndent Indent(Log);
 
     //
@@ -963,8 +968,12 @@ private:
     bool HasSPTAR = Layout.hasSPTAR();
 
     auto ReturnMethod = Layout.returnMethod();
-    if (ReturnMethod == ReturnMethod::ModelAggregate and HasSPTAR) {
-      // Inject the SPTAR in LLVMArgumentTypes
+    if (HasSPTAR) {
+      revng_log(Log, "This call site has a SPTAR");
+      revng_assert(ReturnMethod == ReturnMethod::ModelAggregate);
+
+      // The original function produced by enforce-abi had the SPTAR but the
+      // re-created one doesn't, re-inject it temporarily
       revng_assert(Layout.Arguments.size() > 0);
       uint64_t SPTARSize = *Layout.Arguments[0].Type->size();
       LLVMArgumentTypes.push_back(B.getIntNTy(SPTARSize * 8));
@@ -1156,13 +1165,9 @@ private:
 
     revng_assert(Redirector.verify());
 
-    Value *ReturnValuePointer = nullptr;
     // Handle SPTAR by dropping the actual argument and saving it for later
     if (HasSPTAR) {
       revng_assert(Arguments.size() > 0);
-
-      // The return value is pointed by the SPTAR
-      ReturnValuePointer = Arguments[0];
 
       Arguments.erase(Arguments.begin());
     }
@@ -1189,19 +1194,21 @@ private:
     const auto &[PointerReturns, PointerArguments] = getPointerMetadata(Layout);
     setPointersMetadata(NewCall, PointerReturns, PointerArguments);
 
+    Value *ReturnValuePointer = nullptr;
     switch (Layout.returnMethod()) {
     case ReturnMethod::ModelAggregate: {
-      if (HasSPTAR) {
+      if (HasSPTAR and LegacyLocalVariables) {
         // In legacy mode, make a reference out of ReturnValuePointer, using a
         // ModelGEP at offset 0.
-        if constexpr (LegacyLocalVariables) {
-          getAsModelGEP(B,
-                        ReturnValuePointer,
-                        Layout.returnValueAggregateType());
-        }
+        getAsModelGEP(B,
+                      ReturnValuePointer,
+                      Layout.returnValueAggregateType());
+        revng_assert(not OldReturnType->isStructTy());
+        OldCall->replaceAllUsesWith(ReturnValuePointer);
       } else {
         revng_assert(not ReturnValuePointer);
         const auto &ReturnType = Layout.returnValueAggregateType();
+
         if constexpr (LegacyLocalVariables) {
           ReturnValuePointer = createAddressOf(B, NewCall, ReturnType);
         } else {
@@ -1214,12 +1221,7 @@ private:
           B.CreateStore(NewCall, Allocation);
           ReturnValuePointer = IntAddress;
         }
-      }
 
-      if (HasSPTAR) {
-        revng_assert(not OldReturnType->isStructTy());
-        OldCall->replaceAllUsesWith(ReturnValuePointer);
-      } else {
         // We're returning an aggregate, but not via SPTAR, we're using one or
         // more registers
         if (OldReturnType->isStructTy()) {
@@ -1247,6 +1249,7 @@ private:
             }
           }
         } else {
+          // WIP: I think this load should not be here
           auto *Load = B.CreateLoad(ReturnValuePointer->getType(),
                                     pointer(B, ReturnValuePointer));
           OldCall->replaceAllUsesWith(Load);
