@@ -201,48 +201,62 @@ using Lattice = std::set<StoredByte>;
 struct SegregateStackAccessesMFI : public SetUnionLattice<Lattice> {
   using Label = llvm::BasicBlock *;
   using GraphType = llvm::Function *;
-  using ExtraStateType = MFP::NoExtraState;
+  using ExtraStateType = MFP::ExtraState<llvm::Instruction *, Lattice>;
 
+private:
+  static void processInstruction(llvm::Instruction &I,
+                                 LatticeElement &StackBytes) {
+    using namespace llvm;
+    if (isCallToIsolatedFunction(&I)) {
+      StackBytes.clear();
+      return;
+    }
+
+    // If it's not a load/store, pointer is nullptr
+    if (not isa<LoadInst>(&I) and not isa<StoreInst>(&I))
+      return;
+
+    revng_log(Log, "Analyzing instruction " << getName(&I));
+    LoggerIndent Indent(Log);
+
+    // Get stack offset, if available
+    auto MaybeStartStackOffset = getStackOffset(&I);
+    if (not MaybeStartStackOffset)
+      return;
+
+    int64_t StartStackOffset = *MaybeStartStackOffset;
+    unsigned AccessSize = getMemoryAccessSize(&I);
+    int64_t EndStackOffset = StartStackOffset + AccessSize;
+
+    // Erase all the existing entries
+    // TODO: use lower_bound instead of scanning everything
+    StackBytes.erase(StackBytes.lower_bound(StoredByte{ StartStackOffset }),
+                     StackBytes.upper_bound(StoredByte{ EndStackOffset }));
+
+    // If it's a store, record all of its bytes
+    if (auto *Store = dyn_cast<StoreInst>(&I))
+      for (unsigned J = 0; J < AccessSize; ++J)
+        StackBytes.insert({ StartStackOffset + J, Store, J });
+  }
+
+public:
   static LatticeElement applyTransferFunction(llvm::BasicBlock *BB,
                                               const LatticeElement &Value,
-                                              MFP::NoExtraState &) {
+                                              ExtraStateType &State) {
     using namespace llvm;
     revng_log(Log, "Analyzing block " << getName(BB));
     LoggerIndent Indent(Log);
 
     LatticeElement StackBytes = Value;
 
+    // Expose the lattice value at the boundaries of every instruction so
+    // the caller can observe the value at specific program points (e.g.
+    // the stack_size_at_call_site marker placed right before an isolated
+    // call).
     for (Instruction &I : *BB) {
-      if (isCallToIsolatedFunction(&I)) {
-        StackBytes.clear();
-        continue;
-      }
-
-      // If it's not a load/store, pointer is nullptr
-      if (not isa<LoadInst>(&I) and not isa<StoreInst>(&I))
-        continue;
-
-      revng_log(Log, "Analyzing instruction " << getName(&I));
-      LoggerIndent Indent(Log);
-
-      // Get stack offset, if available
-      auto MaybeStartStackOffset = getStackOffset(&I);
-      if (not MaybeStartStackOffset)
-        continue;
-
-      int64_t StartStackOffset = *MaybeStartStackOffset;
-      unsigned AccessSize = getMemoryAccessSize(&I);
-      int64_t EndStackOffset = StartStackOffset + AccessSize;
-
-      // Erase all the existing entries
-      // TODO: use lower_bound instead of scanning everything
-      StackBytes.erase(StackBytes.lower_bound(StoredByte{ StartStackOffset }),
-                       StackBytes.upper_bound(StoredByte{ EndStackOffset }));
-
-      // If it's a store, record all of its bytes
-      if (auto *Store = dyn_cast<StoreInst>(&I))
-        for (unsigned I = 0; I < AccessSize; ++I)
-          StackBytes.insert({ StartStackOffset + I, Store, I });
+      State.registerBefore(&I, StackBytes);
+      processInstruction(I, StackBytes);
+      State.registerAfter(&I, StackBytes);
     }
 
     return StackBytes;
@@ -334,10 +348,6 @@ static PointersMetadata getPointerMetadata(const abi::FunctionType::Layout &L) {
 // the template parameter.
 template<bool LegacyLocalVariables>
 class SegregateStackAccesses : public pipeline::FunctionPassImpl {
-private:
-  using MFIResult = std::map<BasicBlock *,
-                             MFP::MFPResult<std::set<StoredByte>>>;
-
 private:
   const model::Binary &Binary;
   Module &M;
@@ -841,29 +851,29 @@ private:
     // Analyze stack usage
     //
 
-    // Analysis preparation: split basic blocks at call sites.
-    // This enables us to use the *final* value of the monotone framework
-    // associated to the basic block of stack_size_at_call_site.
-    {
-      std::set<Instruction *> SplitPoints;
+    // Pre-populate the MFP ExtraState with the stack_size_at_call_site
+    // markers we want to observe. The analysis transfer function records the
+    // lattice value seen at the start of every instruction; for these
+    // markers the recorded value is exactly the stack-byte set right before
+    // the immediately-following isolated call, which is what
+    // `handleCallSite` needs.
+    using SSAMFI = SegregateStackAccessesMFI;
+    SSAMFI::ExtraStateType MFPExtraState;
+    if (SSACS != nullptr)
       for (BasicBlock &BB : F)
         for (Instruction &I : BB)
-          if (isCallToIsolatedFunction(&I))
-            SplitPoints.insert(&I);
-      for (Instruction *I : SplitPoints)
-        I->getParent()->splitBasicBlock(I);
-    }
+          if (CallInst *SSACSCall = getCallTo(&I, SSACS))
+            MFPExtraState.registerAsInterestingBefore(SSACSCall);
 
     // Run the analysis
-    MFIResult AnalysisResult;
     {
       revng_log(Log, "Running SegregateStackAccessesMFI");
       LoggerIndent Indent(Log);
-      using SSAMFI = SegregateStackAccessesMFI;
       BasicBlock *Entry = &F.getEntryBlock();
       std::vector ExtremalLabels = { Entry };
-      AnalysisResult = MFP::getMaximalFixedPoint<
-        SSAMFI>({ .Flow = &F, .ExtremalLabels = &ExtremalLabels });
+      MFP::getMaximalFixedPoint<SSAMFI>({ .Flow = &F,
+                                          .ExtremalLabels = &ExtremalLabels },
+                                        &MFPExtraState);
     }
 
     //
@@ -874,7 +884,7 @@ private:
       for (BasicBlock &BB : F)
         for (Instruction &I : BB)
           if (CallInst *SSACSCall = getCallTo(&I, SSACS))
-            handleCallSite(AnalysisResult, SSACSCall);
+            handleCallSite(MFPExtraState, SSACSCall);
 
     //
     // Handle memory access, possibly targeting formal stack arguments
@@ -909,7 +919,8 @@ private:
     }
   }
 
-  void handleCallSite(MFIResult &AnalysisResult, CallInst *SSACSCall) {
+  void handleCallSite(SegregateStackAccessesMFI::ExtraStateType &MFPExtraState,
+                      CallInst *SSACSCall) {
     revng_log(Log, "Analyzing call to SSACS " << getName(SSACSCall));
     LoggerIndent Indent(Log);
 
@@ -1325,12 +1336,13 @@ private:
       int64_t Offset = 0;
     };
     std::map<StoreInst *, StoreInfo> Stores;
-    BasicBlock *BB = SSACSCall->getParent();
 
-    // We use the *final* value. In fact, we split the basic block before the
-    // call to the isolated function as appropriate.
-    const std::set<StoredByte> &BlockFinalResult = AnalysisResult.at(BB)
-                                                     .OutValue;
+    // The MFP transfer function records the lattice value at the start of
+    // every instruction into MFPExtraState. For SSACSCall this is exactly
+    // the stack-byte set right before the immediately-following isolated
+    // call, which is the value we need here.
+    const std::set<StoredByte> &BlockFinalResult = MFPExtraState
+                                                     .getBefore(SSACSCall);
     for (const StoredByte &Byte : BlockFinalResult) {
       StoreInfo &Info = Stores[Byte.Store];
       Info.Count += 1;
