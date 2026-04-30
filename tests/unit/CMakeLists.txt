@@ -488,6 +488,18 @@ revng_add_test(
 )
 
 #
+# test_mfp_extra_state
+#
+
+revng_add_test_executable(test_mfp_extra_state "${SRC}/MFPExtraState.cpp")
+target_compile_definitions(test_mfp_extra_state PRIVATE "BOOST_TEST_DYN_LINK=1")
+target_include_directories(test_mfp_extra_state PRIVATE "${CMAKE_SOURCE_DIR}")
+target_link_libraries(test_mfp_extra_state revngSupport revngUnitTestHelpers
+                      Boost::unit_test_framework ${LLVM_LIBRARIES})
+revng_add_test(NAME test_mfp_extra_state COMMAND test_mfp_extra_state)
+set_tests_properties(test_mfp_extra_state PROPERTIES LABELS "unit;mfp")
+
+#
 # test_combingpass
 #
 
