@@ -63,6 +63,7 @@ struct BitLivenessAnalysis {
   using LatticeElement = uint32_t;
   using Label = DataFlowNode *;
   using MFPResult = MFP::MFPResult<BitLivenessAnalysis::LatticeElement>;
+  using ExtraStateType = MFP::NoExtraState;
 
   uint32_t combineValues(const uint32_t &LHS, const uint32_t &RHS) const {
     return std::max(LHS, RHS);
@@ -72,7 +73,9 @@ struct BitLivenessAnalysis {
     return LHS <= RHS;
   }
 
-  uint32_t applyTransferFunction(DataFlowNode *L, const uint32_t E) const;
+  uint32_t applyTransferFunction(DataFlowNode *L,
+                                 const uint32_t E,
+                                 MFP::NoExtraState &) const;
 };
 
 using BitVector = llvm::BitVector;
@@ -240,7 +243,8 @@ static uint32_t transferZExt(Instruction *Ins, const uint32_t &Element) {
 }
 
 uint32_t BitLivenessAnalysis::applyTransferFunction(DataFlowNode *L,
-                                                    const uint32_t E) const {
+                                                    const uint32_t E,
+                                                    MFP::NoExtraState &) const {
   auto *Ins = L->Instruction;
   switch (Ins->getOpcode()) {
   case Instruction::And:
@@ -282,7 +286,8 @@ BitLivenessPass::Result BitLivenessPass::run(llvm::Function &F,
     BitLivenessAnalysis>({ .Flow = &DataFlowGraph,
                            .ExtremalValue = &Top,
                            .ExtremalLabels = &ExtremalLabels });
-  static_assert(MFP::HasNodeRange<llvm::GraphTraits<typename BitLivenessAnalysis::GraphType>>);
+  static_assert(MFP::HasNodeRange<
+                llvm::GraphTraits<typename BitLivenessAnalysis::GraphType>>);
   BitLivenessPass::Result Result;
   for (auto &[Label, MFPResult] : MFPRes) {
     auto &Entry = Result[Label->Instruction];

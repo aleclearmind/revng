@@ -715,8 +715,11 @@ struct ReachableExitsAnalysis
   using LatticeElement = typename SetUnionLattice<
     std::set<BasicBlockNode<NodeT> *>>::LatticeElement;
 
+  using ExtraStateType = MFP::NoExtraState;
+
   static LatticeElement applyTransferFunction(const Label &L,
-                                              const LatticeElement E) {
+                                              const LatticeElement E,
+                                              MFP::NoExtraState &) {
 
     const auto IsInlined = [](const auto &NodeLabelPair) {
       return NodeLabelPair.second.Inlined;

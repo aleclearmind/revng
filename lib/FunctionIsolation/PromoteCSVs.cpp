@@ -442,9 +442,11 @@ static bool needsWrapper(Function *F) {
 struct UsedRegistersMFI : public SetUnionLattice<FunctionNodeData::UsedCSVSet> {
   using Label = FunctionNode *;
   using GraphType = GenericCallGraph *;
+  using ExtraStateType = MFP::NoExtraState;
 
   static LatticeElement applyTransferFunction(Label L,
-                                              const LatticeElement &Value) {
+                                              const LatticeElement &Value,
+                                              MFP::NoExtraState &) {
     return combineValues(L->UsedCSVs, Value);
   }
 };

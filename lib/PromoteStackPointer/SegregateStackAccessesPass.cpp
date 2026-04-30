@@ -201,9 +201,11 @@ using Lattice = std::set<StoredByte>;
 struct SegregateStackAccessesMFI : public SetUnionLattice<Lattice> {
   using Label = llvm::BasicBlock *;
   using GraphType = llvm::Function *;
+  using ExtraStateType = MFP::NoExtraState;
 
   static LatticeElement applyTransferFunction(llvm::BasicBlock *BB,
-                                              const LatticeElement &Value) {
+                                              const LatticeElement &Value,
+                                              MFP::NoExtraState &) {
     using namespace llvm;
     revng_log(Log, "Analyzing block " << getName(BB));
     LoggerIndent Indent(Log);
@@ -1200,9 +1202,7 @@ private:
       if (HasSPTAR and LegacyLocalVariables) {
         // In legacy mode, make a reference out of ReturnValuePointer, using a
         // ModelGEP at offset 0.
-        getAsModelGEP(B,
-                      ReturnValuePointer,
-                      Layout.returnValueAggregateType());
+        getAsModelGEP(B, ReturnValuePointer, Layout.returnValueAggregateType());
         revng_assert(not OldReturnType->isStructTy());
         OldCall->replaceAllUsesWith(ReturnValuePointer);
       } else {

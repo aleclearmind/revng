@@ -78,7 +78,8 @@ bool AdvancedValueInfoMFI::isLessOrEqual(const LatticeElement &LHS,
 
 AdvancedValueInfoMFI::LatticeElement
 AdvancedValueInfoMFI::applyTransferFunction(Label L,
-                                            const LatticeElement &E) const {
+                                            const LatticeElement &E,
+                                            MFP::NoExtraState &) const {
 
   revng_log(AVILogger, "   " << L->toString());
   LoggerIndent Indent(AVILogger);

@@ -20,6 +20,7 @@ public:
   using LatticeElement = Set;
   using GraphType = llvm::Inverse<const Function *>;
   using Label = const BlockNode *;
+  using ExtraStateType = MFP::NoExtraState;
 
 private:
   Set Default;
@@ -54,7 +55,8 @@ public:
   }
 
   RegisterSet applyTransferFunction(const BlockNode *Block,
-                                    const RegisterSet &InitialState) const {
+                                    const RegisterSet &InitialState,
+                                    MFP::NoExtraState &) const {
     RegisterSet Result = InitialState;
 
     for (const Operation &Operation :
