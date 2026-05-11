@@ -1,5 +1,6 @@
 #pragma once
 
+#include "revng/Support/Debug.h"
 #pragma clang optimize off
 
 //
@@ -15,7 +16,6 @@
 #include <utility>
 
 #include "llvm/ADT/DenseMap.h"
-#include "llvm/ADT/DenseMapInfo.h"
 #include "llvm/ADT/GraphTraits.h"
 #include "llvm/ADT/Hashing.h"
 #include "llvm/ADT/PostOrderIterator.h"
@@ -30,28 +30,29 @@
 // WIP: lowercase
 namespace MFP {
 
-/// Position relative to a `Key` recorded into an `ExtraState`.
+inline Logger NullLogger("");
+
+template<typename T, typename StreamT>
+void dump(StreamT &Stream, unsigned Indent, const T &Element) {
+  for (unsigned I = 0; I < Indent; ++I)
+    Stream << "  ";
+  Stream << "(not implemented)\n";
+}
+
+template<typename T, typename StreamT>
+void dumpLabel(StreamT &Stream, const T &Element) {
+  Stream << "(not implemented)";
+}
+
+/// Position relative to a `Key` recorded into an `ExtraState`
 enum class Position : unsigned char {
   Before,
   After
 };
 
-/// Sentinel `ExtraStateType` for MFIs that do not need to record any
-/// intermediate state. MFIs that don't care declare
-/// `using ExtraStateType = MFP::NoExtraState;` and take `NoExtraState &` as
-/// the third argument of `applyTransferFunction`.
-struct NoExtraState {};
-
-/// Recording surface that `applyTransferFunction` writes to so callers can
-/// inspect intermediate lattice values at finer granularity than a `Label`
-/// (e.g. instruction-level state inside a basic-block label).
-///
-/// The caller marks the `(Key, Position)` pairs of interest with
-/// `registerAsInteresting{Before,After}` before passing the instance to
-/// `getMaximalFixedPoint`. The transfer function then calls
-/// `register{Before,After}` for each `(Key, Position)` it observes; only the
-/// pairs already in the map are stored. After convergence the caller reads
-/// the fixed-point values back via `get{Before,After}`.
+/// An hashmap that enables transfer functions to attach a LatticeElement to
+/// sub-Label entities (e.g., instructions in a basic block), depending to what
+/// the user is interested in
 template<typename KeyT, typename LatticeElement>
 class ExtraState {
 public:
@@ -65,23 +66,15 @@ private:
     }
   };
 
-  /// Use `llvm::DenseMap` when the lattice element is small enough to be
-  /// stored cheaply inline (DenseMap reserves space for empty/tombstone slots
-  /// proportional to the value size); fall back to `std::unordered_map`
-  /// otherwise. The `Key` type must have a `llvm::DenseMapInfo`
-  /// specialization to take the `DenseMap` path.
-  using MapType = std::conditional_t<
-    (sizeof(LatticeElement) <= 2 * sizeof(void *)),
-    llvm::DenseMap<KeyAndPosition, LatticeElement>,
-    std::unordered_map<KeyAndPosition, LatticeElement, Hash>>;
-
+private:
   /// The presence of a `(Key, Position)` entry marks it as interesting; the
   /// stored value is the most recently recorded one.
-  MapType Map;
+  std::unordered_map<KeyAndPosition, LatticeElement, Hash> Map;
 
 public:
   /// @{
   /// Mark a `(Key, Position)` pair as interesting. Caller-side.
+
   void registerAsInterestingBefore(const Key &K) {
     Map.try_emplace({ K, Position::Before });
   }
@@ -121,21 +114,20 @@ public:
     return It->second;
   }
   /// @}
+
+public:
+  template<typename T>
+  void dump(T &Stream) const {
+    Stream << Map.size() << " elements:\n";
+    for (const auto &[Key, Element] : Map) {
+      Stream << "  " << (Key.second == Position::Before ? "Before " : "After ");
+      MFP::dumpLabel(Stream, Key.first);
+      Stream << "\n";
+
+      MFP::dump<LatticeElement>(Stream, 2, Element);
+    }
+  }
 };
-
-inline Logger NullLogger("");
-
-template<typename T>
-void dump(llvm::raw_ostream &Stream, unsigned Indent, const T &Element) {
-  for (unsigned I = 0; I < Indent; ++I)
-    Stream << "  ";
-  Stream << "(not implemented)\n";
-}
-
-template<typename T>
-void dumpLabel(llvm::raw_ostream &Stream, const T &Element) {
-  Stream << "(not implemented)";
-}
 
 template<typename LatticeElement>
 struct MFPResult {
@@ -149,12 +141,39 @@ auto successors(typename GT::NodeRef From) {
   return llvm::make_range(GT::child_begin(From), GT::child_end(From));
 }
 
+// WIP: doc
+struct NoExtraState {};
+
+template<typename MFI>
+concept HasExtraStateKey = requires { typename MFI::ExtraStateKey; };
+
+template<typename MFI>
+struct GetExtraStateKey {
+  using type = typename MFI::ExtraStateKey;
+};
+
+template<typename T>
+struct Identity {
+  using type = T;
+};
+
+template<typename MFI>
+using ExtraStateKey = std::conditional_t<HasExtraStateKey<MFI>,
+                                         GetExtraStateKey<MFI>,
+                                         Identity<void *>>::type;
+
+template<typename MFI>
+using ExtraStateType = std::conditional_t<
+  HasExtraStateKey<MFI>,
+  ExtraState<ExtraStateKey<MFI>, typename MFI::LatticeElement>,
+  NoExtraState>;
+
 template<typename MFI, typename LatticeElement = typename MFI::LatticeElement>
 concept MonotoneFrameworkInstance = requires(const MFI &I,
                                              LatticeElement E1,
                                              LatticeElement E2,
                                              typename MFI::Label L,
-                                             typename MFI::ExtraStateType &ES) {
+                                             ExtraStateType<MFI> &ES) {
   /// To compute the reverse post order traversal of the graph starting from
   /// the extremal nodes, we need that the nodes also represent a subgraph
   typename llvm::GraphTraits<typename MFI::Label>::NodeRef;
@@ -282,7 +301,7 @@ getMaximalFixedPointImpl(const MFIType &MFI,
                          const std::vector<typename MFIType::Label>
                            &ExtremalLabels,
                          const std::vector<typename MFIType::Label> &EntryNodes,
-                         typename MFIType::ExtraStateType &ExtraState,
+                         ExtraStateType<MFIType> &ExtraState,
                          Logger &Logger = NullLogger) {
   using Label = typename MFIType::Label;
   using LatticeElement = typename MFIType::LatticeElement;
@@ -455,40 +474,6 @@ getMaximalFixedPointImpl(const MFIType &MFI,
   return AnalysisResult;
 }
 
-#if 0
-template<MonotoneFrameworkInstance MFI,
-         typename GT = llvm::GraphTraits<typename MFI::GraphType>>
-MFIResultMap<MFI>
-getMaximalFixedPoint(const MFI &Instance,
-                     typename MFI::GraphType Flow,
-                     typename MFI::LatticeElement InitialValue,
-                     typename MFI::LatticeElement ExtremalValue,
-                     const std::vector<typename MFI::Label> &ExtremalLabels,
-                     Logger &Logger = NullLogger) {
-  using Label = typename MFI::Label;
-  std::vector<Label> InitialNodes(ExtremalLabels);
-
-  // Handle the special case that the graph has a single entry node
-  if (GT::getEntryNode(Flow) != typename GT::NodeRef{})
-    InitialNodes.push_back(GT::getEntryNode(Flow));
-
-  // Start visits for nodes that we still haven't visited prioritizing extremal
-  // nodes
-  for (Label Node :
-       llvm::make_range(GT::nodes_begin(Flow), GT::nodes_end(Flow))) {
-    InitialNodes.push_back(Node);
-  }
-
-  return getMaximalFixedPoint<MFI, GT>(Instance,
-                                       Flow,
-                                       InitialValue,
-                                       ExtremalValue,
-                                       ExtremalLabels,
-                                       InitialNodes,
-                                       Logger);
-}
-#endif
-
 template<MonotoneFrameworkInstance MFIType>
 struct MFPConfiguration {
   const MFIType *Instance = nullptr;
@@ -497,14 +482,14 @@ struct MFPConfiguration {
   const typename MFIType::LatticeElement *ExtremalValue = nullptr;
   const std::vector<typename MFIType::Label> *ExtremalLabels = nullptr;
   const std::vector<typename MFIType::Label> *EntryLabels = nullptr;
+  ExtraStateType<MFIType> *ExtraState = nullptr;
   Logger *Logger = nullptr;
 };
 
 template<MonotoneFrameworkInstance MFIType,
          typename GT = llvm::GraphTraits<typename MFIType::GraphType>>
 MFIResultMap<MFIType>
-getMaximalFixedPoint(MFPConfiguration<MFIType> Configuration,
-                     typename MFIType::ExtraStateType *ExtraState = nullptr) {
+getMaximalFixedPoint(MFPConfiguration<MFIType> Configuration) {
   std::optional<MFIType> DefaultInstance;
   if constexpr (std::is_default_constructible_v<MFIType>) {
     if (Configuration.Instance == nullptr)
@@ -541,7 +526,7 @@ getMaximalFixedPoint(MFPConfiguration<MFIType> Configuration,
     if (Entry != typename GT::NodeRef{}) {
       DefaultEntryNodes.push_back(Entry);
     }
-    // WIP: else
+    // WIP: else should work here. why doesn't it?
     {
       if constexpr (HasNodeRange<GT>) {
         auto Flow = Configuration.Flow;
@@ -560,13 +545,9 @@ getMaximalFixedPoint(MFPConfiguration<MFIType> Configuration,
   if (Configuration.Logger == nullptr)
     Configuration.Logger = &NullLogger;
 
-  // If the caller didn't supply an ExtraState, default-construct one. For
-  // ExtraStateType == NoExtraState this is a no-op; for a real ExtraState an
-  // empty (no interesting points) instance behaves like NoExtraState.
-  typename MFIType::ExtraStateType DefaultExtraState{};
-  typename MFIType::ExtraStateType &EffectiveExtraState = ExtraState ?
-                                                            *ExtraState :
-                                                            DefaultExtraState;
+  ExtraStateType<MFIType> DefaultExtraState;
+  if (Configuration.ExtraState == nullptr)
+    Configuration.ExtraState = &DefaultExtraState;
 
   return getMaximalFixedPointImpl<MFIType, GT>(*Configuration.Instance,
                                                Configuration.Flow,
@@ -574,26 +555,8 @@ getMaximalFixedPoint(MFPConfiguration<MFIType> Configuration,
                                                *Configuration.ExtremalValue,
                                                *Configuration.ExtremalLabels,
                                                *Configuration.EntryLabels,
-                                               EffectiveExtraState,
+                                               *Configuration.ExtraState,
                                                *Configuration.Logger);
 }
 
 } // namespace MFP
-
-namespace llvm {
-template<>
-struct DenseMapInfo<MFP::Position> {
-  static MFP::Position getEmptyKey() {
-    return static_cast<MFP::Position>(static_cast<unsigned char>(-1));
-  }
-  static MFP::Position getTombstoneKey() {
-    return static_cast<MFP::Position>(static_cast<unsigned char>(-2));
-  }
-  static unsigned getHashValue(const MFP::Position &P) {
-    return static_cast<unsigned char>(P);
-  }
-  static bool isEqual(const MFP::Position &LHS, const MFP::Position &RHS) {
-    return LHS == RHS;
-  }
-};
-} // namespace llvm

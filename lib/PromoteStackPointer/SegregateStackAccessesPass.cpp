@@ -1,3 +1,5 @@
+#pragma clang optimize off
+
 //
 // This file is distributed under the MIT License. See LICENSE.md for details.
 //
@@ -5,9 +7,11 @@
 #include <optional>
 #include <set>
 
+#include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/Instructions.h"
+#include "llvm/IR/PatternMatch.h"
 #include "llvm/IR/Verifier.h"
 
 #include "revng/ABI/FunctionType/Layout.h"
@@ -37,6 +41,22 @@ using namespace llvm;
 using std::tie;
 
 static Logger Log("segregate-stack-accesses");
+
+// WIP: use StackSpan?
+/// Start -> end offset pair
+struct  OffsetRange {
+  int64_t Start = 0;
+  int64_t End = 0;
+};
+using OffsetRanges = SmallVector<OffsetRange>;
+
+static uint64_t getRangeSize(const OffsetRanges &Ranges) {
+  uint64_t Result = 0;
+  for (const auto &Range : Ranges) {
+    Result += Range.End - Range.Start;
+  }
+  return Result;
+}
 
 inline Value *createAdd(revng::IRBuilder &B, Value *V, uint64_t Addend) {
   return B.CreateAdd(V, ConstantInt::get(V->getType(), Addend));
@@ -89,13 +109,8 @@ static std::optional<int64_t> getStackOffset(Instruction *I) {
         auto MaybeStart = getSignedConstantArg(Call, 1);
         auto MaybeEnd = getSignedConstantArg(Call, 2);
 
-        revng_log(Log, "AccessSize: " << AccessSize);
-        revng_log(Log, "MaybeStart: " << (MaybeStart ? *MaybeStart : -1));
-        revng_log(Log, "MaybeEnd: " << (MaybeEnd ? *MaybeEnd : -1));
-
         if (MaybeStart and MaybeEnd
             and *MaybeEnd == *MaybeStart + AccessSize + 1) {
-          revng_log(Log, "StackOffset found: " << *MaybeStart);
           return MaybeStart;
         }
       }
@@ -107,36 +122,62 @@ static std::optional<int64_t> getStackOffset(Instruction *I) {
 
 struct StoredByte {
   int64_t StackOffset = 0;
-  llvm::StoreInst *Store = nullptr;
-  unsigned StoreOffset = 0;
+  llvm::Instruction *Writer = nullptr;
 
   bool operator<(const StoredByte &Other) const {
-    auto ThisTuple = std::tie(StackOffset, Store, StoreOffset);
-    auto OtherTuple = std::tie(Other.StackOffset,
-                               Other.Store,
-                               Other.StoreOffset);
+    auto ThisTuple = std::tie(StackOffset, Writer);
+    auto OtherTuple = std::tie(Other.StackOffset, Other.Writer);
     return ThisTuple < OtherTuple;
+  }
+
+  void dump() const debug_function { dump(dbg, 0); }
+
+  template<typename T>
+  void dump(T &Stream, unsigned Indent) const {
+    for (unsigned I = 0; I < Indent; ++I)
+      Stream << "  ";
+    Stream << StackOffset << ": " << getName(Writer) << "\n";
   }
 };
 
+/// This class tracks the range of stack that's "owned" by a certain alloca.
+///
+/// You can have multiple instance of this, for instance one for the caller
+/// function and then one for each call site.
+///
+/// In any case, the data in this data structure is always relative to the value
+/// of the stack pointer at the entry of the function.
+///
+/// This means that you will have positive values for stack arguments of the
+/// caller, while for all the rest you should expect negative values.
+/// Users of this class are expected to follow this rule.
 class StackAccessRedirector {
 private:
-  using Span = abi::FunctionType::Layout::Argument::StackSpan;
-
-private:
-  int64_t BaseOffset;
-  std::map<int64_t, std::pair<uint64_t, Value *>> Map;
+  int64_t BaseOffset = 0;
+  std::map<int64_t, std::pair<int64_t, Value *>> Map;
 
 public:
+  StackAccessRedirector() = default;
   StackAccessRedirector(int64_t BaseOffset) : BaseOffset(BaseOffset) {}
 
-  void recordSpan(const Span &Span, Value *BaseAddress) {
+public:
+  void recordSpan(const OffsetRange &Span, Value *BaseAddress) {
+    revng_log(Log, "Redirecting from " << Span.Start << " to " << Span.End << " to " << getName(BaseAddress));
     revng_assert(BaseAddress->getType()->isIntegerTy());
-    auto Offset = BaseOffset + Span.Offset;
+    auto Offset = BaseOffset + Span.Start;
     revng_assert(!Map.contains(Offset));
-    Map[Offset] = { Span.Size, BaseAddress };
+    Map[Offset] = { BaseOffset + Span.End, BaseAddress };
 
+    if (not verify()) {
+      dump();
+      revng_abort();
+    }
     revng_assert(verify());
+  }
+
+  void recordSpan(const abi::FunctionType::Layout::Argument::StackSpan &Span, Value *BaseAddress) {
+    OffsetRange NewRange { static_cast<int64_t>(Span.Offset), static_cast<int64_t>(Span.Offset + Span.Size)};
+    return recordSpan(NewRange, BaseAddress);
   }
 
 public:
@@ -144,25 +185,28 @@ public:
   computeNewBase(int64_t Offset, uint64_t Size) const {
 
     revng_log(Log, "Searching for " << Offset << " of size " << Size);
+    LoggerIndent Indent(Log);
 
     auto It = Map.upper_bound(Offset);
     if (It == Map.begin()) {
       revng_log(Log, "Not found");
+      // WIP
+      dump(); revng_abort();
       return std::nullopt;
     }
 
     --It;
 
     int64_t SpanStart = It->first;
-    uint64_t SpanSize = It->second.first;
+    int64_t SpanEnd = It->second.first;
     Value *BaseAddress = It->second.second;
 
     using OSI = OverflowSafeInt<int64_t>;
-    auto MaybeSpanEnd = (OSI(SpanStart) + SpanSize).value();
     auto MaybeEnd = (OSI(Offset) + Size).value();
-    if (not MaybeSpanEnd or not MaybeEnd or Offset >= *MaybeSpanEnd
-        or *MaybeEnd > *MaybeSpanEnd) {
+    if (not MaybeEnd or Offset >= SpanEnd or *MaybeEnd > SpanEnd) {
       revng_log(Log, "Not found");
+      // WIP
+      dump(); revng_abort();
       return std::nullopt;
     }
 
@@ -176,78 +220,447 @@ public:
       auto FirstToSemiLast = llvm::make_range(Map.begin(), --Map.end());
       auto SecondToLast = llvm::make_range(++Map.begin(), Map.end());
       for (auto &&[Current, Next] : llvm::zip(FirstToSemiLast, SecondToLast)) {
-        auto CurrentEnd = Current.first
-                          + static_cast<int64_t>(Current.second.first);
+        auto CurrentEnd = Current.second.first;
         auto NextStart = Next.first;
         if (CurrentEnd > NextStart)
           return false;
       }
     }
+
     return true;
   }
 
   template<typename T>
   void dump(T &Stream) const {
     for (auto &&[K, V] : Map) {
-      Stream << K << ": [" << V.first << ", " << getName(V.second) << "]\n";
+      Stream << K << " -> " << V.first << ": " << getName(V.second) << "\n";
     }
   }
 
   void dump() const debug_function { dump(dbg); }
 };
 
-using Lattice = std::set<StoredByte>;
-
-struct SegregateStackAccessesMFI : public SetUnionLattice<Lattice> {
-  using Label = llvm::BasicBlock *;
-  using GraphType = llvm::Function *;
-  using ExtraStateType = MFP::ExtraState<llvm::Instruction *, Lattice>;
-
+class FunctionStackAccessRedirectors {
 private:
-  static void processInstruction(llvm::Instruction &I,
-                                 LatticeElement &StackBytes) {
-    using namespace llvm;
-    if (isCallToIsolatedFunction(&I)) {
-      StackBytes.clear();
-      return;
+  StackAccessRedirector *FunctionRedirector = nullptr;
+  std::vector<std::unique_ptr<StackAccessRedirector>> CallSiteRedirectors;
+  std::map<Instruction *, StackAccessRedirector *> RedirectorForInstruction;
+
+public:
+  FunctionStackAccessRedirectors(StackAccessRedirector *FunctionRedirector) :
+    FunctionRedirector(FunctionRedirector) {}
+
+public:
+  bool empty() const {
+    return FunctionRedirector == nullptr and CallSiteRedirectors.empty();
+  }
+
+  StackAccessRedirector *get(Instruction *I) const {
+    auto It = RedirectorForInstruction.find(I);
+    if (It == RedirectorForInstruction.end())
+      return FunctionRedirector;
+    else
+      return It->second;
+  }
+
+  StackAccessRedirector *
+  getCommon(const SmallVector<Instruction *> &Instructions) {
+    StackAccessRedirector *Result = FunctionRedirector;
+    bool First = true;
+    for (auto *Writer : Instructions) {
+      StackAccessRedirector *WriterRedirector = get(Writer);
+      if (First) {
+        First = false;
+        Result = WriterRedirector;
+      } else if (WriterRedirector == Result) {
+        // All good so far
+      } else {
+        revng_log(Log,
+                  "Different writers of this load are associated to "
+                  "different redirectors. Falling back to the "
+                  "default one.");
+        return FunctionRedirector;
+      }
     }
 
-    // If it's not a load/store, pointer is nullptr
-    if (not isa<LoadInst>(&I) and not isa<StoreInst>(&I))
-      return;
-
-    revng_log(Log, "Analyzing instruction " << getName(&I));
-    LoggerIndent Indent(Log);
-
-    // Get stack offset, if available
-    auto MaybeStartStackOffset = getStackOffset(&I);
-    if (not MaybeStartStackOffset)
-      return;
-
-    int64_t StartStackOffset = *MaybeStartStackOffset;
-    unsigned AccessSize = getMemoryAccessSize(&I);
-    int64_t EndStackOffset = StartStackOffset + AccessSize;
-
-    // Erase all the existing entries
-    // TODO: use lower_bound instead of scanning everything
-    StackBytes.erase(StackBytes.lower_bound(StoredByte{ StartStackOffset }),
-                     StackBytes.upper_bound(StoredByte{ EndStackOffset }));
-
-    // If it's a store, record all of its bytes
-    if (auto *Store = dyn_cast<StoreInst>(&I))
-      for (unsigned J = 0; J < AccessSize; ++J)
-        StackBytes.insert({ StartStackOffset + J, Store, J });
+    return Result;
   }
 
 public:
-  static LatticeElement applyTransferFunction(llvm::BasicBlock *BB,
-                                              const LatticeElement &Value,
-                                              ExtraStateType &State) {
+  StackAccessRedirector *record(StackAccessRedirector &&Redirector) {
+    using SAR = StackAccessRedirector;
+    CallSiteRedirectors.push_back(std::make_unique<SAR>(std::move(Redirector)));
+    return CallSiteRedirectors.back().get();
+  }
+
+  void registerOwner(StackAccessRedirector *Redirector, Instruction *I) {
+    revng_log(Log, "Registering redirector " << Redirector << " for " << getName(I));
+    auto IsRedirector = [&Redirector](const auto &ExistingRedirector) {
+      return ExistingRedirector.get() == Redirector;
+    };
+    revng_assert(llvm::any_of(CallSiteRedirectors, IsRedirector));
+
+    // WIP: emit warning, set to nullptr and in get use default in case of
+    //      nullptr
+    RedirectorForInstruction[I] = Redirector;
+  }
+};
+
+class MemoryAreaState : public std::set<StoredByte> {
+public:
+  void eraseRange(int64_t Start, int64_t End) {
+    erase(lower_bound(StoredByte{ Start }), upper_bound(StoredByte{ End }));
+  }
+
+  void record(int64_t Start, int64_t End, llvm::Instruction *Writer) {
+    revng_assert(Start <= End);
+    for (auto Offset = Start; Offset < End; ++Offset)
+      insert({ Offset, Writer });
+  }
+
+public:
+  template<typename T>
+  void dump(T &Stream, unsigned Indent) const {
+    for (const StoredByte &Stored : *this)
+      Stored.dump(Stream, Indent);
+  }
+
+  void dump() const debug_function { dump(dbg, 0); }
+};
+
+class CallSite {
+public:
+  std::optional<int64_t> MaybeStackSize;
+  abi::FunctionType::Layout Layout;
+  CallInst *OldCall = nullptr;
+
+  OffsetRanges StackArgumentRanges;
+  std::optional<OffsetRange> StackReturnValueRange;
+
+  StackAccessRedirector Redirector;
+
+public:
+  static CallSite make(CallInst *SSACSCall,
+                       const model::TypeDefinition &Prototype,
+                       CallInst *InitLocalSPCall,
+                       uint64_t StackFrameSize,
+                       size_t CallInstructionPushSize);
+
+private:
+  void processSPTAR(CallInst *InitLocalSPCall, uint64_t StackFrameSize);
+
+public:
+  template<typename T>
+  void dump(T &Stream) const {
+    if (MaybeStackSize.has_value()) {
+      Stream << "MaybeStackSize: " << *MaybeStackSize;
+    } else {
+      Stream << "MaybeStackSize: no";
+    }
+    Stream << "\n";
+
+    Stream << "Layout:\n";
+    Layout.dump(Stream);
+    Stream << "\n";
+
+    Stream << "OldCall: " << getName(OldCall) << "\n";
+
+    Stream << "StackArgumentRanges:\n";
+    for (auto [Start, End] : StackArgumentRanges) {
+      Stream << "  " << Start << " -> " << End << "\n";
+    }
+
+    if (StackReturnValueRange.has_value()) {
+      Stream << "StackReturnValueRange: " << StackReturnValueRange->Start
+             << ", " << StackReturnValueRange->End;
+    } else {
+      Stream << "StackReturnValueRange: no";
+    }
+    Stream << "\n";
+
+    Stream << "Redirector:\n";
+    Redirector.dump(Stream);
+    Stream << "\n";
+  }
+
+  void dump() const debug_function { dump(dbg); }
+};
+
+CallSite CallSite::make(CallInst *SSACSCall,
+                        const model::TypeDefinition &Prototype,
+                        CallInst *InitLocalSPCall,
+                        uint64_t StackFrameSize,
+                        size_t CallInstructionPushSize) {
+  CallSite Result;
+
+  // Get stack size at call site
+  Result.MaybeStackSize = getSignedConstantArg(SSACSCall, 0);
+
+  // Obtain the prototype layout
+  using namespace abi::FunctionType;
+  Result.Layout = Layout::make(Prototype);
+
+  // Find old call instruction
+  Result.OldCall = findAssociatedCall(SSACSCall);
+  revng_assert(Result.OldCall != nullptr);
+
+  if (not Result.MaybeStackSize.has_value()) {
+    revng_log(Log, "Stack size unknown, ignoring stack arguments");
+  } else {
+
+    OverflowSafeInt<int64_t> StackSizeAtCallSite(-*Result.MaybeStackSize);
+    auto &Layout = Result.Layout;
+
+    // Clobber stack arguments
+    for (const auto &Argument : Layout.Arguments) {
+      if (Argument.Stack.has_value()) {
+        auto StartOffset = StackSizeAtCallSite + Argument.Stack->Offset + CallInstructionPushSize;
+        auto EndOffset = StartOffset + Argument.Stack->Size;
+
+        if (not StartOffset or not EndOffset) {
+          revng_log(Log,
+                    "Overflow in computing stack argument offset, "
+                    "ignoring");
+          continue;
+        }
+
+        Result.StackArgumentRanges.emplace_back(*StartOffset, *EndOffset);
+      }
+    }
+
+    Result.processSPTAR(InitLocalSPCall, StackFrameSize);
+  }
+
+  return Result;
+}
+
+void CallSite::processSPTAR(CallInst *InitLocalSPCall,
+                            uint64_t StackFrameSize) {
+  if (not Layout.hasSPTAR())
+    return;
+
+  revng_log(Log, "Processing SPTAR");
+  LoggerIndent Indent(Log);
+
+  if (StackFrameSize == 0) {
+    revng_log(Log, "The stack frame has size 0, bailing out");
+    return;
+  }
+
+  // We expect the first argument to be (revng_undefined_local_sp + constant)
+
+  if (InitLocalSPCall == nullptr) {
+    revng_log(Log, "Couldn't find call to revng_undefined_local_sp");
+    return;
+  }
+
+  revng_assert(OldCall->arg_size() > 0);
+  Value *SPTAR = OldCall->getArgOperand(0);
+
+  using namespace PatternMatch;
+  llvm::ConstantInt *Offset = nullptr;
+  if (not match(SPTAR,
+                m_Add(m_Specific(InitLocalSPCall), m_ConstantInt(Offset)))) {
+    revng_log(Log,
+              "Couldn't identify offset in the stack of the stack-allocated "
+              "return value passed via SPTAR");
+    return;
+  }
+
+  revng_assert(Offset != nullptr);
+
+  OverflowSafeInt<int64_t> EndOffset(Offset->getSExtValue());
+  auto ReturnValueSize = Layout.returnValueAggregateType().size();
+  revng_assert(ReturnValueSize.has_value());
+
+  EndOffset += ReturnValueSize.value();
+  if (EndOffset) {
+    // Record the call itself as the writer of the SPTAR range
+    StackReturnValueRange = { Offset->getSExtValue(), *EndOffset };
+  } else {
+    revng_log(Log, "Overflow while computing the final offset of StackReturnValueRange");
+  }
+
+}
+
+using CallSiteMap = std::map<CallInst *, CallSite>;
+
+/// Given an instruction, returns what parts of the stack clobbers/writes
+///
+/// For store, we check the pointer operand and store size.
+/// For calls, we clobber all the stack arguments and mark as written the stack
+/// portion pointed to by the SPTAR, if present.
+class InstructionStackUsage {
+public:
+  struct StackUsage {
+    // WIP: merge?
+    OffsetRanges Clobbers;
+    OffsetRanges Writes;
+  };
+
+private:
+  const CallSiteMap &CallSites;
+
+public:
+  InstructionStackUsage(const CallSiteMap &CallSites) : CallSites(CallSites) {}
+
+public:
+  StackUsage getWrites(Instruction *I) const {
+    StackUsage Result;
+
+    if (auto *Call = dyn_cast<CallInst>(I)) {
+      auto It = CallSites.find(Call);
+      if (It == CallSites.end())
+        return Result;
+
+      auto &CallSite = It->second;
+
+      for (auto [Start, End] : CallSite.StackArgumentRanges)
+        Result.Clobbers.push_back({ Start, End });
+
+      if (CallSite.StackReturnValueRange.has_value()) {
+        Result.Writes = { CallSite.StackReturnValueRange.value() };
+      }
+
+    } else if (auto *Store = dyn_cast<StoreInst>(I)) {
+      // Get stack offset, if available
+      auto MaybeStartStackOffset = getStackOffset(I);
+      if (not MaybeStartStackOffset)
+        return Result;
+
+      int64_t StartStackOffset = *MaybeStartStackOffset;
+      unsigned AccessSize = getMemoryAccessSize(I);
+      int64_t EndStackOffset = StartStackOffset + AccessSize;
+
+      Result.Writes = { { StartStackOffset, EndStackOffset } };
+    }
+
+    return Result;
+  }
+
+  OffsetRanges getReads(Instruction *I) const {
+    OffsetRanges Result;
+
+    if (auto *Call = dyn_cast<CallInst>(I)) {
+      auto It = CallSites.find(Call);
+      if (It == CallSites.end())
+        return Result;
+
+      for (auto [Start, End] : It->second.StackArgumentRanges)
+        Result.push_back({ Start, End });
+
+    } else if (auto *Store = dyn_cast<LoadInst>(I)) {
+      // Get stack offset, if available
+      auto MaybeStartStackOffset = getStackOffset(I);
+      if (not MaybeStartStackOffset)
+        return Result;
+
+      int64_t StartStackOffset = *MaybeStartStackOffset;
+      unsigned AccessSize = getMemoryAccessSize(I);
+      // WIP: overflow
+      int64_t EndStackOffset = StartStackOffset + AccessSize;
+
+      return { { StartStackOffset, EndStackOffset } };
+    }
+
+    return Result;
+  }
+};
+
+[[nodiscard]] static SmallVector<Instruction *>
+findAllWriters(const MemoryAreaState &State,
+               const InstructionStackUsage &StackUsage,
+               const OffsetRanges &Ranges) {
+  SmallVector<Instruction *> Result;
+  DenseMap<Instruction *, unsigned> StoreBytesSeen;
+
+  // WIP LOW: we should sort Ranges and process pair-wise ProgramPoint and
+  //          Ranges to avoid full scans
+  for (const StoredByte &Byte : State) {
+    auto Offset = Byte.StackOffset;
+
+    bool Found = false;
+    for (auto [StartOffset, EndOffset] : Ranges) {
+      if (StartOffset <= Offset and Offset < EndOffset) {
+        Found = true;
+        break;
+      }
+    }
+
+    if (not Found)
+      continue;
+
+    auto It = StoreBytesSeen.find(Byte.Writer);
+    if (It == StoreBytesSeen.end()) {
+      Result.push_back(Byte.Writer);
+      StoreBytesSeen[Byte.Writer] = 1;
+    } else {
+      ++It->second;
+    }
+  }
+
+  // WIP: explain
+  auto RangesSize = getRangeSize(Ranges);
+  auto PartiallyOverlaps = [&](Instruction *I) {
+    auto OtherRangeSize = getRangeSize(StackUsage.getWrites(I).Writes);
+    auto SmallerSize = std::min(RangesSize, OtherRangeSize);
+    bool Partial = StoreBytesSeen[I] != SmallerSize;
+    if (Partial) {
+      revng_log(Log,
+                "Dropping "
+                  << getName(I) << " due to partial overlap (RangeSize: "
+                  << RangesSize << ", OtherRangeSize: " << OtherRangeSize
+                  << ", Overlapping: " << StoreBytesSeen[I] << ")");
+    }
+    return Partial;
+  };
+  llvm::erase_if(Result, PartiallyOverlaps);
+
+  return Result;
+}
+
+struct SegregateStackAccessesMFI : public SetUnionLattice<MemoryAreaState> {
+public:
+  using Label = llvm::BasicBlock *;
+  using GraphType = llvm::Function *;
+  using ExtraStateKey = llvm::Instruction *;
+  using ExtraStateType = MFP::ExtraState<llvm::Instruction *, MemoryAreaState>;
+
+private:
+  const InstructionStackUsage &StackUsage;
+
+public:
+  SegregateStackAccessesMFI(const InstructionStackUsage &StackUsage) :
+    StackUsage(StackUsage) {}
+
+private:
+  void processInstruction(llvm::Instruction &I,
+                          MemoryAreaState &StackBytes) const {
+    revng_log(Log, "Processing " << getName(&I));
+    LoggerIndent Indent(Log);
+
+    auto Usage = StackUsage.getWrites(&I);
+
+    for (auto [Start, End] : Usage.Clobbers) {
+      revng_log(Log, "Clobbering from " << Start << " to " << End);
+      StackBytes.eraseRange(Start, End);
+    }
+
+    for (auto [Start, End] : Usage.Writes) {
+      revng_log(Log, "Recording from " << Start << " to " << End << " as written by " << getName(&I));
+      StackBytes.record(Start, End, &I);
+    }
+  }
+
+public:
+  MemoryAreaState applyTransferFunction(llvm::BasicBlock *BB,
+                                        const MemoryAreaState &Value,
+                                        ExtraStateType &State) const {
     using namespace llvm;
     revng_log(Log, "Analyzing block " << getName(BB));
     LoggerIndent Indent(Log);
 
-    LatticeElement StackBytes = Value;
+    MemoryAreaState StackBytes = Value;
 
     // Expose the lattice value at the boundaries of every instruction so
     // the caller can observe the value at specific program points (e.g.
@@ -264,6 +677,27 @@ public:
 };
 
 static_assert(MFP::MonotoneFrameworkInstance<SegregateStackAccessesMFI>);
+
+namespace MFP {
+
+template<>
+void dump<MemoryAreaState>(Logger &Stream,
+                           unsigned Indent,
+                           const MemoryAreaState &Element) {
+  Element.dump(Stream, Indent);
+}
+
+template<>
+void dumpLabel<BasicBlock *>(Logger &Stream, BasicBlock *const &Label) {
+  Stream << getName(Label);
+}
+
+template<>
+void dumpLabel<Instruction *>(Logger &Stream, Instruction *const &Label) {
+  Stream << getName(Label);
+}
+
+} // namespace MFP
 
 struct SortByFunction {
   bool operator()(const Instruction *LHS, const Instruction *RHS) const {
@@ -359,7 +793,7 @@ private:
   std::map<Function *, Function *> OldToNew;
   std::set<Function *> FunctionsWithStackArguments;
   std::map<Function *, StackAccessRedirector> StackArgumentsRedirectors;
-  std::vector<Instruction *> ToPushALAP;
+  SmallVector<Instruction *> ToPushALAP;
 
   llvm::Type *TargetPointerSizedInteger = nullptr;
   llvm::Type *OpaquePointerType = nullptr;
@@ -496,6 +930,9 @@ private:
   Function &upgradeLocalFunction(Function *OldFunction) {
     using namespace abi::FunctionType;
 
+    revng_log(Log, "Upgrading " << getName(OldFunction));
+    LoggerIndent Indent(Log);
+
     auto &&[NewFunction, Layout] = getOrCreateNewLocalFunction(OldFunction);
 
     // Let the new function steal the body from the old function
@@ -524,6 +961,7 @@ private:
       return Argument.Stack.has_value();
     };
     if (llvm::any_of(Layout.Arguments, IsStackArgument)) {
+      revng_log(Log, "Creating redirector for stack arguments");
       auto It = StackArgumentsRedirectors.emplace(NewFunction, 0).first;
       Redirector = &It->second;
     }
@@ -767,11 +1205,8 @@ private:
         if constexpr (LegacyLocalVariables) {
           ToReturn = ReturnValueAllocation;
         } else {
-          if (Layout.hasSPTAR()) {
-            ToReturn = ReturnValueIntAddress;
-          } else {
-            ToReturn = B.CreateLoad(NewReturnType, ReturnValueAllocation);
-          }
+          // WIP: alignment is 8. check other as well.
+          ToReturn = B.CreateLoad(NewReturnType, ReturnValueAllocation);
         }
         B.CreateRet(ToReturn);
         Ret->eraseFromParent();
@@ -831,6 +1266,9 @@ private:
   }
 
   void segregateStackAccesses(Function &F) {
+    // WIP: this function has quite some function-specific state, we could have
+    //      a new class, possibly friend to this
+
     // Get model::Function
     MetaAddress Entry = getMetaAddressMetadata(&F, "revng.function.entry");
     const model::Function &ModelFunction = Binary.Functions().at(Entry);
@@ -842,28 +1280,64 @@ private:
     LoggerIndent Indent(Log);
 
     // Lookup the redirector, if any
-    auto It = StackArgumentsRedirectors.find(&F);
     StackAccessRedirector *Redirector = nullptr;
-    if (It != StackArgumentsRedirectors.end())
+    auto It = StackArgumentsRedirectors.find(&F);
+    bool HasRedirector = It != StackArgumentsRedirectors.end();
+    if (HasRedirector)
       Redirector = &It->second;
+    revng_log(Log, "Default redirector: " << (HasRedirector ? "yes" : "no"));
+    FunctionStackAccessRedirectors Redirectors(Redirector);
 
-    //
-    // Analyze stack usage
-    //
+    // Find call to revng_undefined_local_sp
+    CallInst *InitLocalSPCall = nullptr;
+    if (InitLocalSP != nullptr)
+      InitLocalSPCall = findCallTo(&F, InitLocalSP);
 
-    // Pre-populate the MFP ExtraState with the stack_size_at_call_site
-    // markers we want to observe. The analysis transfer function records the
-    // lattice value seen at the start of every instruction; for these
-    // markers the recorded value is exactly the stack-byte set right before
-    // the immediately-following isolated call, which is what
-    // `handleCallSite` needs.
-    using SSAMFI = SegregateStackAccessesMFI;
-    SSAMFI::ExtraStateType MFPExtraState;
-    if (SSACS != nullptr)
-      for (BasicBlock &BB : F)
-        for (Instruction &I : BB)
-          if (CallInst *SSACSCall = getCallTo(&I, SSACS))
+    // Get stack frame size
+    uint64_t StackFrameSize = 0;
+    if (const model::TypeDefinition *T = ModelFunction.stackFrameType())
+      StackFrameSize = *rc_eval(T->size(VH));
+
+    revng_log(Log, "StackFrameSize: " << StackFrameSize);
+
+    // Collect information on call sites and register them as interesting
+    // analysis points
+    SegregateStackAccessesMFI::ExtraStateType MFPExtraState;
+    CallSiteMap CallSites;
+    if (SSACS != nullptr) {
+      for (BasicBlock &BB : F) {
+        for (Instruction &I : BB) {
+          if (CallInst *SSACSCall = getCallTo(&I, SSACS)) {
+            // Handle call to stack_size_at_call_site
+            revng_log(Log, "Processing " << getName(SSACSCall));
+            LoggerIndent Indent(Log);
+
+            // We want to obtain the state of the MFI before the call
             MFPExtraState.registerAsInterestingBefore(SSACSCall);
+
+            const auto &Prototype = *getCallSitePrototype(Binary, SSACSCall);
+            CallSites[SSACSCall] = CallSite::make(SSACSCall,
+                                                  Prototype,
+                                                  InitLocalSPCall,
+                                                  StackFrameSize,
+                                                  CallInstructionPushSize);
+
+            if (Log.isEnabled()) {
+              CallSites[SSACSCall].dump(Log);
+              Log << DoLog;
+            }
+
+          } else if (isa<LoadInst>(&I) and getStackOffset(&I).has_value()) {
+            // Handle load from the stack
+
+            // We want to obtain the state of the MFI before the load
+            MFPExtraState.registerAsInterestingBefore(&I);
+          }
+        }
+      }
+    }
+
+    InstructionStackUsage StackUsage(CallSites);
 
     // Run the analysis
     {
@@ -871,35 +1345,117 @@ private:
       LoggerIndent Indent(Log);
       BasicBlock *Entry = &F.getEntryBlock();
       std::vector ExtremalLabels = { Entry };
-      MFP::getMaximalFixedPoint<SSAMFI>({ .Flow = &F,
-                                          .ExtremalLabels = &ExtremalLabels },
-                                        &MFPExtraState);
+      using SSAMFI = SegregateStackAccessesMFI;
+      SSAMFI MFI(StackUsage);
+      MFP::getMaximalFixedPoint<SSAMFI>({ .Instance = &MFI,
+                                          .Flow = &F,
+                                          .ExtremalLabels = &ExtremalLabels,
+                                          .ExtraState = &MFPExtraState,
+                                          .Logger = &Log });
+
+      if (Log.isEnabled()) {
+        Log << "Extra state:\n";
+        MFPExtraState.dump(Log);
+        Log << DoLog;
+      }
     }
 
     //
-    // Handle a call to an isolated function
+    // Handle calls to an isolated function
     //
-    revng_log(Log, "Handling call sites");
-    if (SSACS != nullptr)
-      for (BasicBlock &BB : F)
-        for (Instruction &I : BB)
-          if (CallInst *SSACSCall = getCallTo(&I, SSACS))
-            handleCallSite(MFPExtraState, SSACSCall);
+    {
+      std::map<Instruction *, StackAccessRedirector *> RedirectorForInstruction;
+      revng_log(Log, "Handling call sites");
+      LoggerIndent Indent(Log);
+      for (auto &[SSACSCall, CallSite] : CallSites) {
+        revng_log(Log, "Handling " << getName(SSACSCall));
+        LoggerIndent Indent(Log);
+
+        auto *CallSiteRedirector = Redirectors.record(handleCallSite(SSACSCall,
+                                                                     CallSite));
+        Redirectors.registerOwner(CallSiteRedirector, SSACSCall);
+
+        const auto &AnalysisResult = MFPExtraState.getBefore(SSACSCall);
+
+        if (Log.isEnabled()) {
+          Log << "Status of the analysis at call site:\n";
+          AnalysisResult.dump(Log, 1);
+          Log << DoLog;
+        }
+
+        for (Instruction *I : findAllWriters(AnalysisResult,
+                                             StackUsage,
+                                             CallSite.StackArgumentRanges)) {
+          Redirectors.registerOwner(CallSiteRedirector, I);
+        }
+      }
+    }
 
     //
     // Handle memory access, possibly targeting formal stack arguments
     //
-    revng_log(Log, "Handling memory accesses");
-    if (Redirector != nullptr)
+    if (not Redirectors.empty()) {
+      revng_log(Log, "Handling memory accesses");
+      LoggerIndent Indent(Log);
       for (BasicBlock &BB : F)
         for (Instruction &I : BB)
-          if (isa<LoadInst>(&I) or isa<StoreInst>(&I))
-            handleMemoryAccess(*Redirector, &I);
+          if (isa<LoadInst>(&I) or isa<StoreInst>(&I)) {
+            if (isa<LoadInst>(&I))
+              revng_log(Log, "Handling load " << getName(&I));
+            else
+              revng_log(Log, "Handling store " << getName(&I));
+            LoggerIndent Indent(Log);
+            // WIP: push this logic into handleMemoryAccess
+
+            if (Log.isEnabled()) {
+              auto StackOffset = getStackOffset(&I);
+              Log << "StackOffset: ";
+              if (StackOffset.has_value())
+                Log << *StackOffset;
+              else
+                Log << "(none)";
+              Log << DoLog;
+            }
+
+            // Find the correct redirector
+            StackAccessRedirector *Redirector = nullptr;
+            // WIP: getStackOffset(&I).has_value is compute before as well,
+            //      create a set of loads from the stack?
+            if (isa<LoadInst>(&I) and getStackOffset(&I).has_value()) {
+              // For load instructions, we get the redirector of its writers
+              const auto &AnalysisResult = MFPExtraState.getBefore(&I);
+
+              auto ReadRanges = StackUsage.getReads(&I);
+              auto Writers = findAllWriters(AnalysisResult,
+                                            StackUsage,
+                                            ReadRanges);
+
+              if (Log.isEnabled()) {
+                Log << "Found " << Writers.size() << " writers:\n";
+                for (auto *Writer : Writers) {
+                  Log << "  " << getName(Writer) << "\n";
+                }
+                Log << DoLog;
+              }
+
+              Redirector = Redirectors.getCommon(Writers);
+            } else {
+              Redirector = Redirectors.get(&I);
+            }
+
+            if (Redirector == nullptr) {
+              revng_log(Log, "No redirector");
+            } else {
+              revng_log(Log, "Redirecting using " << Redirector);
+              handleMemoryAccess(*Redirector, &I);
+            }
+          }
+    }
 
     //
     // Fix stack frame
     //
-    adjustStackFrame(ModelFunction, F);
+    adjustStackFrame(ModelFunction, F, InitLocalSPCall, StackFrameSize);
   }
 
   void pushALAP() {
@@ -919,27 +1475,17 @@ private:
     }
   }
 
-  void handleCallSite(SegregateStackAccessesMFI::ExtraStateType &MFPExtraState,
-                      CallInst *SSACSCall) {
+  StackAccessRedirector handleCallSite(CallInst *SSACSCall,
+                                       const CallSite &CallSite) {
+    using namespace abi::FunctionType;
+
     revng_log(Log, "Analyzing call to SSACS " << getName(SSACSCall));
     LoggerIndent Indent(Log);
 
-    //
-    // Find call to revng_undefined_local_sp
-    //
     Function *Caller = SSACSCall->getParent()->getParent();
 
-    // Get stack size at call site
-    auto MaybeStackSize = getSignedConstantArg(SSACSCall, 0);
-
-    // Obtain the prototype
-    const auto &Prototype = *getCallSitePrototype(Binary, SSACSCall);
-    using namespace abi::FunctionType;
-    abi::FunctionType::Layout Layout = Layout::make(Prototype);
-
-    // Find old call instruction
-    CallInst *OldCall = findAssociatedCall(SSACSCall);
-    revng_assert(OldCall != nullptr);
+    // Unpack CallSite
+    const auto &[MaybeStackSize, Layout, OldCall, _1, _2, _3] = CallSite;
 
     revng::IRBuilder B(OldCall);
 
@@ -1178,10 +1724,10 @@ private:
 
     revng_assert(Redirector.verify());
 
-    // Handle SPTAR by dropping the actual argument and saving it for later
+    // Handle SPTAR by dropping the actual argument
+    // WIP: why did we add it in the first place?
     if (HasSPTAR) {
       revng_assert(Arguments.size() > 0);
-
       Arguments.erase(Arguments.begin());
     }
 
@@ -1210,6 +1756,7 @@ private:
     Value *ReturnValuePointer = nullptr;
     switch (Layout.returnMethod()) {
     case ReturnMethod::ModelAggregate: {
+      revng_log(Log, "This call site return a model aggregate");
       if (HasSPTAR and LegacyLocalVariables) {
         // In legacy mode, make a reference out of ReturnValuePointer, using a
         // ModelGEP at offset 0.
@@ -1223,6 +1770,7 @@ private:
         if constexpr (LegacyLocalVariables) {
           ReturnValuePointer = createAddressOf(B, NewCall, ReturnType);
         } else {
+          revng_log(Log, "Creating local variable to store the return value");
           auto &VB = VariableBuilder;
           VB.setTargetFunction(Caller);
           Value *Allocation = nullptr;
@@ -1231,6 +1779,8 @@ private:
               IntAddress) = VB.createLocalVariableAndTakeIntAddress(ReturnType);
           B.CreateStore(NewCall, Allocation);
           ReturnValuePointer = IntAddress;
+
+          Redirector.recordSpan(CallSite.StackReturnValueRange.value(), IntAddress);
         }
 
         // We're returning an aggregate, but not via SPTAR, we're using one or
@@ -1260,10 +1810,7 @@ private:
             }
           }
         } else {
-          // WIP: I think this load should not be here
-          auto *Load = B.CreateLoad(ReturnValuePointer->getType(),
-                                    pointer(B, ReturnValuePointer));
-          OldCall->replaceAllUsesWith(Load);
+          OldCall->replaceAllUsesWith(ReturnValuePointer);
         }
       }
 
@@ -1324,6 +1871,8 @@ private:
     eraseFromParent(OldCall);
     revng_assert(CalleeType->getPointerTo() == CalledValue->getType());
 
+    return Redirector;
+#if 0
     if (not MaybeStackSize)
       return;
 
@@ -1337,16 +1886,12 @@ private:
     };
     std::map<StoreInst *, StoreInfo> Stores;
 
-    // The MFP transfer function records the lattice value at the start of
-    // every instruction into MFPExtraState. For SSACSCall this is exactly
-    // the stack-byte set right before the immediately-following isolated
-    // call, which is the value we need here.
-    const std::set<StoredByte> &BlockFinalResult = MFPExtraState
-                                                     .getBefore(SSACSCall);
-    for (const StoredByte &Byte : BlockFinalResult) {
-      StoreInfo &Info = Stores[Byte.Store];
-      Info.Count += 1;
-      Info.Offset = Byte.StackOffset - Byte.StoreOffset;
+    for (const StoredByte &Byte : AnalysisResult) {
+      if (auto *Writer = dyn_cast<StoreInst>(Byte.Writer)) {
+        StoreInfo &Info = Stores[Writer];
+        Info.Count += 1;
+        Info.Offset = Byte.StackOffset - Byte.StoreOffset;
+      }
     }
 
     // Process MarkedStores
@@ -1389,13 +1934,11 @@ private:
         replace(Store, NewBase->second, NewBase->first);
       }
     }
+#endif
   }
 
   void handleMemoryAccess(const StackAccessRedirector &Redirector,
                           Instruction *I) {
-    revng_log(Log, "Handling memory access " << getName(I));
-    LoggerIndent Indent(Log);
-
     auto MaybeStackOffset = getStackOffset(I);
     if (not MaybeStackOffset)
       return;
@@ -1408,25 +1951,13 @@ private:
       replace(I, NewBase->second, NewBase->first);
   }
 
-  void adjustStackFrame(const model::Function &ModelFunction, Function &F) {
-    //
-    // Find call to revng_undefined_local_sp
-    //
-    if (InitLocalSP == nullptr)
-      return;
-
-    CallInst *InitLocalSPCall = findCallTo(&F, InitLocalSP);
-
+  void adjustStackFrame(const model::Function &ModelFunction,
+                        Function &F,
+                        CallInst *InitLocalSPCall,
+                        uint64_t StackFrameSize) {
     if (InitLocalSPCall == nullptr
         or ModelFunction.StackFrame().Type().isEmpty())
       return;
-
-    //
-    // Get stack frame size
-    //
-    uint64_t StackFrameSize = 0;
-    if (const model::TypeDefinition *T = ModelFunction.stackFrameType())
-      StackFrameSize = *rc_eval(T->size(VH));
 
     //
     // Create call and rebase SP0, if StackFrameSize is not zero

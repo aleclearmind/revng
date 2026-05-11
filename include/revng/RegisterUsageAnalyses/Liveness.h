@@ -20,7 +20,6 @@ public:
   using LatticeElement = Set;
   using GraphType = llvm::Inverse<const Function *>;
   using Label = const BlockNode *;
-  using ExtraStateType = MFP::NoExtraState;
 
 private:
   Set Default;

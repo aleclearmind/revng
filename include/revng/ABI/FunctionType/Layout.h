@@ -11,6 +11,7 @@
 #include "revng/ABI/Definition.h"
 #include "revng/ADT/STLExtras.h"
 #include "revng/Model/Binary.h"
+#include "revng/Support/YAMLTraits.h"
 
 namespace abi::FunctionType {
 
@@ -88,8 +89,8 @@ public:
 
   public:
     struct StackSpan {
-      uint64_t Offset;
-      uint64_t Size;
+      uint64_t Offset = 0;
+      uint64_t Size = 0;
 
       StackSpan operator+(uint64_t Offset) const {
         return { this->Offset + Offset, Size };
@@ -196,7 +197,13 @@ public:
   }
 
 public:
-  void dump() const debug_function;
+  void dump() const debug_function { dump(dbg); }
+
+  template<typename T>
+  void dump(T &Stream) const {
+    // TODO: accept an arbitrary stream
+    serialize(Stream, *this);
+  }
 };
 
 inline std::span<const model::Register::Values>
@@ -276,3 +283,49 @@ inline UsedRegisters usedRegisters(const model::UpcastableType &FunctionType) {
 }
 
 } // namespace abi::FunctionType
+
+using FTL = abi::FunctionType::Layout;
+namespace FTAK = abi::FunctionType::ArgumentKind;
+
+template<>
+struct llvm::yaml::ScalarEnumerationTraits<FTAK::Values>
+  : public NamedEnumScalarTraits<FTAK::Values> {};
+
+template<>
+struct llvm::yaml::MappingTraits<FTL::Argument::StackSpan> {
+  static void mapping(IO &IO, FTL::Argument::StackSpan &SS) {
+    IO.mapRequired("Offset", SS.Offset);
+    IO.mapRequired("Size", SS.Size);
+  }
+};
+LLVM_YAML_IS_SEQUENCE_VECTOR(FTL::Argument::StackSpan)
+
+template<>
+struct llvm::yaml::MappingTraits<FTL::ReturnValue> {
+  static void mapping(IO &IO, FTL::ReturnValue &RV) {
+    IO.mapRequired("Type", RV.Type);
+    IO.mapRequired("Registers", RV.Registers);
+  }
+};
+LLVM_YAML_IS_SEQUENCE_VECTOR(FTL::ReturnValue)
+
+template<>
+struct llvm::yaml::MappingTraits<FTL::Argument> {
+  static void mapping(IO &IO, FTL::Argument &A) {
+    IO.mapRequired("Type", A.Type);
+    IO.mapRequired("Kind", A.Kind);
+    IO.mapRequired("Registers", A.Registers);
+    IO.mapOptional("Stack", A.Stack);
+  }
+};
+LLVM_YAML_IS_SEQUENCE_VECTOR(FTL::Argument)
+
+template<>
+struct llvm::yaml::MappingTraits<FTL> {
+  static void mapping(IO &IO, FTL &L) {
+    IO.mapRequired("Arguments", L.Arguments);
+    IO.mapRequired("ReturnValues", L.ReturnValues);
+    IO.mapRequired("CalleeSavedRegisters", L.CalleeSavedRegisters);
+    IO.mapRequired("FinalStackOffset", L.FinalStackOffset);
+  }
+};

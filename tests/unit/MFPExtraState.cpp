@@ -1,5 +1,4 @@
-/// Tests for MFP::getMaximalFixedPoint, with incidental coverage of
-/// MFP::ExtraState as the recording surface for intermediate per-key state.
+// WIP: rename into something more generic on MFP
 
 //
 // This file is distributed under the MIT License. See LICENSE.md for details.
@@ -38,7 +37,8 @@ struct OperationsMFI : public SetUnionLattice<IntSet> {
   using Label = OperationNode *;
   using GraphType = OperationGraph *;
   using LatticeElement = IntSet;
-  using ExtraStateType = MFP::ExtraState<OperationKey, IntSet>;
+  using ExtraStateKey = OperationKey;
+  using ExtraStateType = MFP::ExtraState<OperationKey, LatticeElement>;
 
   LatticeElement applyTransferFunction(Label Node,
                                        const LatticeElement &In,
@@ -186,15 +186,14 @@ BOOST_AUTO_TEST_CASE(ExtraStateRecordingOnDiamond) {
   IntSet ExtremalValue;
   std::vector<OperationNode *> ExtremalLabels{ G.Entry };
 
-  auto Result = MFP::getMaximalFixedPoint<OperationsMFI>(
-    MFP::MFPConfiguration<OperationsMFI>{
-      .Instance = &MFI,
-      .Flow = &G.Graph,
-      .Bottom = &Bottom,
-      .ExtremalValue = &ExtremalValue,
-      .ExtremalLabels = &ExtremalLabels,
-    },
-    &S);
+  auto Result = MFP::getMaximalFixedPoint<
+    OperationsMFI>(MFP::MFPConfiguration<OperationsMFI>{
+    .Instance = &MFI,
+    .Flow = &G.Graph,
+    .Bottom = &Bottom,
+    .ExtremalValue = &ExtremalValue,
+    .ExtremalLabels = &ExtremalLabels,
+    .ExtraState = &S });
 
   // Sanity: the fixed-point lattice values must match the diamond test above.
   BOOST_TEST(Result.at(G.Tail).OutValue == IntSet({ 1, 2, 3, 4 }));

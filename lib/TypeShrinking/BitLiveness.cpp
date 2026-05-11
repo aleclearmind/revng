@@ -31,6 +31,7 @@
 
 namespace TypeShrinking {
 
+// WIP: typo
 class BitLivenwssAnnotatedWriter : public llvm::AssemblyAnnotationWriter {
 private:
   const BitLivenessAnalysisResults &Results;
