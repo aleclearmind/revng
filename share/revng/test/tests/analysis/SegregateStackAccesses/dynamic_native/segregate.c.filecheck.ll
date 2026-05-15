@@ -113,6 +113,17 @@ CHECK-DAG:   store i64 2, ptr %[[STACK_8]]
 CHECK-DAG:   = call i64 @local_cabi_aggregate_on_stack_and_registers(i64 1, i64 2, i64 3, i64 4, i64 5, i64 %[[STACK_INT]])
 CHECK: }
 
+CHECK: define <{ i64, i64 }> @local_raw_return_small_aggregate() [[IGN:.*]] {
+CHECK-DAG:   %[[RESULT:.*]] = call <{ i64, i64 }> @struct_initializer(i64 124, i64 123)
+CHECK-DAG:   ret <{ i64, i64 }> %[[RESULT]]
+CHECK: }
+
+CHECK: define i64 @local_call_raw_return_small_aggregate() [[IGN:.*]] {
+CHECK:   %[[RESULT:.*]] = call <{ i64, i64 }> @local_raw_return_small_aggregate()
+CHECK-DAG:   call i64 @OpaqueExtractvalue(<{ i64, i64 }> %[[RESULT]], i64 0)
+CHECK-DAG:   call i64 @OpaqueExtractvalue(<{ i64, i64 }> %[[RESULT]], i64 1)
+CHECK: }
+
 CHECK: define [64 x i8] @local_cabi_return_big_aggregate() [[IGN:.*]] {
 CHECK-DAG:   %[[RETURN_ALLOCA:.*]] = alloca [64 x i8]
 CHECK-DAG:   %[[RETURN_ALLOCA_INT:.*]] = ptrtoint ptr %[[RETURN_ALLOCA]] to i64
@@ -123,12 +134,12 @@ CHECK-DAG:   %[[TO_RETURN:.*]] = load [64 x i8], ptr %[[RETURN_ALLOCA]]
 CHECK-DAG:   ret [64 x i8] %[[TO_RETURN]]
 CHECK: }
 
-CHECK: define i64 @local_call_cabi_return_big_aggregate() #4 !revng.tags !45 !revng.function.entry !373 {
-CHECK-DAG:   %[[RETURN_VALUE:.*]] = call [64 x i8] @local_cabi_return_big_aggregate() #5, !dbg !378, !revng.prototype !381
-  %3 = load i64, ptr inttoptr (i64 u0x402020 to ptr), align 32, !dbg !382
-  %4 = add i64 %1, 16, !dbg !385
-  %5 = inttoptr i64 %4 to ptr, !dbg !385
-  %6 = load i64, ptr %5, align 1, !dbg !385
-  %7 = add i64 %3, %6, !dbg !385
-  ret i64 %7, !dbg !388
+CHECK: define i64 @local_call_cabi_return_big_aggregate() [[IGN:.*]] {
+CHECK-DAG:   %[[RETURN_ALLOCA:.*]] = alloca [64 x i8]
+CHECK-DAG:   %[[RETURN_ALLOCA_INT:.*]] = ptrtoint ptr %[[RETURN_ALLOCA]] to i64
+CHECK-DAG:   %[[RETURN_VALUE:.*]] = call [64 x i8] @local_cabi_return_big_aggregate()
+CHECK-DAG:   store [64 x i8] %[[RETURN_VALUE]], ptr %[[RETURN_ALLOCA]]
+CHECK-DAG:   %[[RETURN_ALLOCA_INT_16:.*]] = add i64 %[[RETURN_ALLOCA_INT]], 16
+CHECK-DAG:   %[[RETURN_ALLOCA_16:.*]] = inttoptr i64 %[[RETURN_ALLOCA_INT_16]] to ptr
+CHECK-DAG:   %[[TO_RETURN:.*]] = load i64, ptr %[[RETURN_ALLOCA_16]]
 CHECK: }

@@ -89,12 +89,11 @@ public:
 
   public:
     struct StackSpan {
+      /// The offset should be interpreted as an offset within the struct
+      /// containing the stack arguments. It's not an offset from some reference
+      /// stack pointer value.
       uint64_t Offset = 0;
       uint64_t Size = 0;
-
-      StackSpan operator+(uint64_t Offset) const {
-        return { this->Offset + Offset, Size };
-      }
     };
 
   public:
@@ -205,6 +204,16 @@ public:
     serialize(Stream, *this);
   }
 };
+
+inline Layout::Argument::StackSpan
+operator+(const Layout::Argument::StackSpan &This, uint64_t Offset) {
+  return { This.Offset + Offset, This.Size };
+}
+
+inline Layout::Argument::StackSpan
+operator+(uint64_t Offset, const Layout::Argument::StackSpan &This) {
+  return { This.Offset + Offset, This.Size };
+}
 
 inline std::span<const model::Register::Values>
 calleeSavedRegisters(const model::CABIFunctionDefinition &Prototype) {

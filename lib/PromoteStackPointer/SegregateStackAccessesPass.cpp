@@ -39,12 +39,14 @@
 
 using namespace llvm;
 using std::tie;
+using StackSpan = abi::FunctionType::Layout::Argument::StackSpan;
+
 
 static Logger Log("segregate-stack-accesses");
 
 // WIP: use StackSpan?
 /// Start -> end offset pair
-struct  OffsetRange {
+struct OffsetRange {
   int64_t Start = 0;
   int64_t End = 0;
 };
@@ -153,20 +155,19 @@ struct StoredByte {
 /// Users of this class are expected to follow this rule.
 class StackAccessRedirector {
 private:
-  int64_t BaseOffset = 0;
   std::map<int64_t, std::pair<int64_t, Value *>> Map;
 
 public:
   StackAccessRedirector() = default;
-  StackAccessRedirector(int64_t BaseOffset) : BaseOffset(BaseOffset) {}
 
 public:
   void recordSpan(const OffsetRange &Span, Value *BaseAddress) {
-    revng_log(Log, "Redirecting from " << Span.Start << " to " << Span.End << " to " << getName(BaseAddress));
+    revng_log(Log,
+              "Redirecting from " << Span.Start << " to " << Span.End << " to "
+                                  << getName(BaseAddress));
     revng_assert(BaseAddress->getType()->isIntegerTy());
-    auto Offset = BaseOffset + Span.Start;
-    revng_assert(!Map.contains(Offset));
-    Map[Offset] = { BaseOffset + Span.End, BaseAddress };
+    revng_assert(!Map.contains(Span.Start));
+    Map[Span.Start] = { Span.End, BaseAddress };
 
     if (not verify()) {
       dump();
@@ -175,8 +176,10 @@ public:
     revng_assert(verify());
   }
 
-  void recordSpan(const abi::FunctionType::Layout::Argument::StackSpan &Span, Value *BaseAddress) {
-    OffsetRange NewRange { static_cast<int64_t>(Span.Offset), static_cast<int64_t>(Span.Offset + Span.Size)};
+  void recordSpan(const StackSpan &Span,
+                  Value *BaseAddress) {
+    OffsetRange NewRange{ static_cast<int64_t>(Span.Offset),
+                          static_cast<int64_t>(Span.Offset + Span.Size) };
     return recordSpan(NewRange, BaseAddress);
   }
 
@@ -191,7 +194,8 @@ public:
     if (It == Map.begin()) {
       revng_log(Log, "Not found");
       // WIP
-      dump(); revng_abort();
+      dump();
+      revng_abort();
       return std::nullopt;
     }
 
@@ -206,7 +210,8 @@ public:
     if (not MaybeEnd or Offset >= SpanEnd or *MaybeEnd > SpanEnd) {
       revng_log(Log, "Not found");
       // WIP
-      dump(); revng_abort();
+      dump();
+      revng_abort();
       return std::nullopt;
     }
 
@@ -242,12 +247,14 @@ public:
 
 class FunctionStackAccessRedirectors {
 private:
-  StackAccessRedirector *FunctionRedirector = nullptr;
+  const StackAccessRedirector *FunctionRedirector = nullptr;
   std::vector<std::unique_ptr<StackAccessRedirector>> CallSiteRedirectors;
-  std::map<Instruction *, StackAccessRedirector *> RedirectorForInstruction;
+  std::map<Instruction *, const StackAccessRedirector *>
+    RedirectorForInstruction;
 
 public:
-  FunctionStackAccessRedirectors(StackAccessRedirector *FunctionRedirector) :
+  FunctionStackAccessRedirectors(const StackAccessRedirector
+                                   *FunctionRedirector) :
     FunctionRedirector(FunctionRedirector) {}
 
 public:
@@ -255,7 +262,7 @@ public:
     return FunctionRedirector == nullptr and CallSiteRedirectors.empty();
   }
 
-  StackAccessRedirector *get(Instruction *I) const {
+  const StackAccessRedirector *get(Instruction *I) const {
     auto It = RedirectorForInstruction.find(I);
     if (It == RedirectorForInstruction.end())
       return FunctionRedirector;
@@ -263,12 +270,12 @@ public:
       return It->second;
   }
 
-  StackAccessRedirector *
+  const StackAccessRedirector *
   getCommon(const SmallVector<Instruction *> &Instructions) {
-    StackAccessRedirector *Result = FunctionRedirector;
+    const StackAccessRedirector *Result = FunctionRedirector;
     bool First = true;
     for (auto *Writer : Instructions) {
-      StackAccessRedirector *WriterRedirector = get(Writer);
+      const StackAccessRedirector *WriterRedirector = get(Writer);
       if (First) {
         First = false;
         Result = WriterRedirector;
@@ -287,14 +294,15 @@ public:
   }
 
 public:
-  StackAccessRedirector *record(StackAccessRedirector &&Redirector) {
+  const StackAccessRedirector *record(StackAccessRedirector &&Redirector) {
     using SAR = StackAccessRedirector;
     CallSiteRedirectors.push_back(std::make_unique<SAR>(std::move(Redirector)));
     return CallSiteRedirectors.back().get();
   }
 
-  void registerOwner(StackAccessRedirector *Redirector, Instruction *I) {
-    revng_log(Log, "Registering redirector " << Redirector << " for " << getName(I));
+  void registerOwner(const StackAccessRedirector *Redirector, Instruction *I) {
+    revng_log(Log,
+              "Registering redirector " << Redirector << " for " << getName(I));
     auto IsRedirector = [&Redirector](const auto &ExistingRedirector) {
       return ExistingRedirector.get() == Redirector;
     };
@@ -330,7 +338,7 @@ public:
 
 class CallSite {
 public:
-  std::optional<int64_t> MaybeStackSize;
+  std::optional<int64_t> MaybeStackOffset;
   abi::FunctionType::Layout Layout;
   CallInst *OldCall = nullptr;
 
@@ -352,8 +360,8 @@ private:
 public:
   template<typename T>
   void dump(T &Stream) const {
-    if (MaybeStackSize.has_value()) {
-      Stream << "MaybeStackSize: " << *MaybeStackSize;
+    if (MaybeStackOffset.has_value()) {
+      Stream << "MaybeStackSize: " << *MaybeStackOffset;
     } else {
       Stream << "MaybeStackSize: no";
     }
@@ -394,7 +402,9 @@ CallSite CallSite::make(CallInst *SSACSCall,
   CallSite Result;
 
   // Get stack size at call site
-  Result.MaybeStackSize = getSignedConstantArg(SSACSCall, 0);
+  auto MaybeArgument = getSignedConstantArg(SSACSCall, 0);
+  if (MaybeArgument.has_value())
+    Result.MaybeStackOffset = -*MaybeArgument;
 
   // Obtain the prototype layout
   using namespace abi::FunctionType;
@@ -404,17 +414,18 @@ CallSite CallSite::make(CallInst *SSACSCall,
   Result.OldCall = findAssociatedCall(SSACSCall);
   revng_assert(Result.OldCall != nullptr);
 
-  if (not Result.MaybeStackSize.has_value()) {
+  if (not Result.MaybeStackOffset.has_value()) {
     revng_log(Log, "Stack size unknown, ignoring stack arguments");
   } else {
 
-    OverflowSafeInt<int64_t> StackSizeAtCallSite(-*Result.MaybeStackSize);
+    OverflowSafeInt<int64_t> StackSizeAtCallSite(*Result.MaybeStackOffset);
     auto &Layout = Result.Layout;
 
     // Clobber stack arguments
     for (const auto &Argument : Layout.Arguments) {
       if (Argument.Stack.has_value()) {
-        auto StartOffset = StackSizeAtCallSite + Argument.Stack->Offset + CallInstructionPushSize;
+        auto StartOffset = StackSizeAtCallSite + Argument.Stack->Offset
+                           + CallInstructionPushSize;
         auto EndOffset = StartOffset + Argument.Stack->Size;
 
         if (not StartOffset or not EndOffset) {
@@ -478,9 +489,10 @@ void CallSite::processSPTAR(CallInst *InitLocalSPCall,
     // Record the call itself as the writer of the SPTAR range
     StackReturnValueRange = { Offset->getSExtValue(), *EndOffset };
   } else {
-    revng_log(Log, "Overflow while computing the final offset of StackReturnValueRange");
+    revng_log(Log,
+              "Overflow while computing the final offset of "
+              "StackReturnValueRange");
   }
-
 }
 
 using CallSiteMap = std::map<CallInst *, CallSite>;
@@ -647,7 +659,9 @@ private:
     }
 
     for (auto [Start, End] : Usage.Writes) {
-      revng_log(Log, "Recording from " << Start << " to " << End << " as written by " << getName(&I));
+      revng_log(Log,
+                "Recording from " << Start << " to " << End << " as written by "
+                                  << getName(&I));
       StackBytes.record(Start, End, &I);
     }
   }
@@ -962,9 +976,25 @@ private:
     };
     if (llvm::any_of(Layout.Arguments, IsStackArgument)) {
       revng_log(Log, "Creating redirector for stack arguments");
-      auto It = StackArgumentsRedirectors.emplace(NewFunction, 0).first;
+      auto It = StackArgumentsRedirectors
+                  .emplace(NewFunction, StackAccessRedirector())
+                  .first;
       Redirector = &It->second;
     }
+
+    auto RecordStackArgument = [this, &Redirector] (const StackSpan &StackSpan, Value *V) {
+      // 0x0000
+      //               -16
+      //   _________   -8
+      //  |_________|  +0  Saved return address
+      //  |_________|  +8  struct StackArguments { uint64_t Offset0;
+      //  |_________|  +16   uint64_t Offset8; };
+      //  |_________|  +24
+      // _|_________|_
+      //
+      // 0xffff
+      Redirector->recordSpan(CallInstructionPushSize + StackSpan, V);
+    };
 
     auto ModelArguments = llvm::make_range(Layout.Arguments.begin(),
                                            Layout.Arguments.end());
@@ -1027,8 +1057,7 @@ private:
         // Handle the argument pointing to the return value
         if (ModelArgument.Stack) {
           revng_assert(ModelArgument.Registers.size() == 0);
-          Redirector->recordSpan(*ModelArgument.Stack + CallInstructionPushSize,
-                                 ReturnValueIntAddress);
+          RecordStackArgument(*ModelArgument.Stack, ReturnValueIntAddress);
         } else {
           // It's in a register
           revng_assert(ModelArgument.Registers.size() == 1);
@@ -1149,8 +1178,8 @@ private:
       }
 
       if (ToRecordSpan) {
-        Redirector->recordSpan(*ModelArgument.Stack + CallInstructionPushSize,
-                               ToRecordSpan);
+        // See the drawing on the other call to recordSpan
+        RecordStackArgument(*ModelArgument.Stack, ToRecordSpan);
       }
     }
 
@@ -1418,7 +1447,7 @@ private:
             }
 
             // Find the correct redirector
-            StackAccessRedirector *Redirector = nullptr;
+            const StackAccessRedirector *Redirector = nullptr;
             // WIP: getStackOffset(&I).has_value is compute before as well,
             //      create a set of loads from the stack?
             if (isa<LoadInst>(&I) and getStackOffset(&I).has_value()) {
@@ -1485,7 +1514,12 @@ private:
     Function *Caller = SSACSCall->getParent()->getParent();
 
     // Unpack CallSite
-    const auto &[MaybeStackSize, Layout, OldCall, _1, _2, _3] = CallSite;
+    const auto &[MaybeStackOffsetAtCallSite,
+                 Layout,
+                 OldCall,
+                 _1,
+                 _2,
+                 _3] = CallSite;
 
     revng::IRBuilder B(OldCall);
 
@@ -1520,8 +1554,36 @@ private:
 
     SmallVector<llvm::Value *, 4> Arguments;
 
-    StackAccessRedirector Redirector(-MaybeStackSize.value_or(0)
-                                     + CallInstructionPushSize);
+    // WIP NEXT: -MaybeStackSize.value_or(0) + CallInstructionPushSize
+    StackAccessRedirector Redirector;
+    auto RecordStackArgument =
+      [this,
+       &Redirector,
+       &MaybeStackOffsetAtCallSite](const StackSpan &StackSpan, Value *V) {
+        revng_assert(MaybeStackOffsetAtCallSite);
+        // Record its portion of the stack for redirection
+
+        // 0x0000
+        // _____________ -40
+        //  |_________|  -32 Saved return address, MaybeStackSize
+        //  |_________|  -24 struct StackArguments { uint64_t Offset0;
+        //  |_________|  -16  uint64_t Offset8; };
+        // _|_________|_ -8  Local variable
+        //  |_________|  +0  Saved return address
+        // _|_________|_
+        //
+        // 0xffff
+
+        // WIP
+        #define PRINT(what) dbg << #what << ": " << what << "\n";
+        PRINT(*MaybeStackOffsetAtCallSite);
+        PRINT(CallInstructionPushSize);
+        PRINT(StackSpan.Offset);
+
+        Redirector.recordSpan(*MaybeStackOffsetAtCallSite
+                                + CallInstructionPushSize + StackSpan,
+                              V);
+      };
 
     SmallVector<llvm::Type *, 8> LLVMArgumentTypes;
     bool HasSPTAR = Layout.hasSPTAR();
@@ -1556,7 +1618,7 @@ private:
           revng_assert(ModelArgument.Type->size() > PointerSize);
           revng_assert(ModelArgument.Registers.size() == 0);
           revng_assert(ModelArgument.Stack->Size == PointerSize);
-          revng_assert(MaybeStackSize);
+          revng_assert(MaybeStackOffsetAtCallSite);
 
           // Create an alloca
           auto *StackSpanType = B.getIntNTy(ModelArgument.Stack->Size * 8);
@@ -1564,8 +1626,7 @@ private:
                                                                StackSpanType);
           auto [Alloca, PtrToInt] = Pair;
 
-          // Record its portion of the stack for redirection
-          Redirector.recordSpan(*ModelArgument.Stack, PtrToInt);
+          RecordStackArgument(*ModelArgument.Stack, PtrToInt);
 
           // Load the alloca and record it as a pointer
           Pointer = B.CreateLoad(Alloca->getAllocatedType(), Alloca);
@@ -1607,7 +1668,7 @@ private:
           OffsetInNewArgument += OldSize;
         }
 
-        if (ModelArgument.Stack and not MaybeStackSize) {
+        if (ModelArgument.Stack and not MaybeStackOffsetAtCallSite) {
           if (not MessageEmitted) {
             MessageEmitted = true;
             emitMessage(OldCall,
@@ -1618,7 +1679,7 @@ private:
         } else if (ModelArgument.Stack) {
           unsigned OldSize = ModelArgument.Stack->Size;
           revng_assert(OldSize <= 128 / 8);
-          revng_assert(MaybeStackSize);
+          revng_assert(MaybeStackOffsetAtCallSite);
 
           // Create an alloca
           IntegerType *StackSpanType = B.getIntNTy(OldSize * 8);
@@ -1627,7 +1688,7 @@ private:
           auto [Alloca, PtrToInt] = Pair;
 
           // Record its portion of the stack for redirection
-          Redirector.recordSpan(*ModelArgument.Stack, PtrToInt);
+          RecordStackArgument(*ModelArgument.Stack, PtrToInt);
 
           Value *Loaded = B.CreateLoad(Alloca->getAllocatedType(), Alloca);
 
@@ -1705,7 +1766,7 @@ private:
         }
 
         if (ModelArgument.Stack)
-          Redirector.recordSpan(*ModelArgument.Stack, StackArgsAddress);
+          RecordStackArgument(*ModelArgument.Stack, StackArgsAddress);
 
         Arguments.push_back(StackArgsAllocation);
       } break;
@@ -1780,7 +1841,10 @@ private:
           B.CreateStore(NewCall, Allocation);
           ReturnValuePointer = IntAddress;
 
-          Redirector.recordSpan(CallSite.StackReturnValueRange.value(), IntAddress);
+          // StackReturnValueRange is already relative to the initial value of
+          // the stack pointer
+          Redirector.recordSpan(CallSite.StackReturnValueRange.value(),
+                                IntAddress);
         }
 
         // We're returning an aggregate, but not via SPTAR, we're using one or
