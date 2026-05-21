@@ -124,6 +124,27 @@ CHECK-DAG:   call i64 @OpaqueExtractvalue(<{ i64, i64 }> %[[RESULT]], i64 0)
 CHECK-DAG:   call i64 @OpaqueExtractvalue(<{ i64, i64 }> %[[RESULT]], i64 1)
 CHECK: }
 
+CHECK: define [16 x i8] @local_cabi_return_small_aggregate() [[IGN:.*]] {
+CHECK-DAG:   %[[RETURN_ALLOCA:.*]] = alloca [16 x i8]
+CHECK-DAG:   %[[RETURN_ALLOCA_INT:.*]] = ptrtoint ptr %[[RETURN_ALLOCA]] to i64
+CHECK-DAG:   %[[RETURN_ALLOCA_INT_8:.*]] = add i64 %[[RETURN_ALLOCA_INT]], 8
+CHECK-DAG:   %[[RETURN_ALLOCA_8:.*]] = inttoptr i64 %[[RETURN_ALLOCA_INT_8]] to ptr
+CHECK-DAG:   store i64 124, ptr %[[RETURN_ALLOCA]]
+CHECK-DAG:   store i64 123, ptr %[[RETURN_ALLOCA_8]]
+CHECK-DAG:   %[[TO_RETURN:.*]] = load [16 x i8], ptr %[[RETURN_ALLOCA]]
+CHECK-DAG:   ret [16 x i8] %[[TO_RETURN]]
+CHECK: }
+
+CHECK: define i64 @local_call_cabi_return_small_aggregate() [[IGN:.*]] {
+CHECK-DAG:   %[[RETURN_ALLOCA:.*]] = alloca [16 x i8]
+CHECK-DAG:   %[[RETURN_ALLOCA_INT:.*]] = ptrtoint ptr %[[RETURN_ALLOCA]] to i64
+CHECK-DAG:   %[[RETURN_VALUE:.*]] = call [16 x i8] @local_cabi_return_small_aggregate()
+CHECK-DAG:   store [16 x i8] %[[RETURN_VALUE]], ptr %[[RETURN_ALLOCA]]
+CHECK-DAG:   %[[RETURN_ALLOCA_INT_8:.*]] = add i64 %[[RETURN_ALLOCA_INT]], 8
+CHECK-DAG:   %[[RETURN_ALLOCA_8:.*]] = inttoptr i64 %[[RETURN_ALLOCA_INT_8]] to ptr
+CHECK-DAG:   %[[TO_RETURN:.*]] = load i64, ptr %[[RETURN_ALLOCA_8]]
+CHECK: }
+
 CHECK: define [64 x i8] @local_cabi_return_big_aggregate() [[IGN:.*]] {
 CHECK-DAG:   %[[RETURN_ALLOCA:.*]] = alloca [64 x i8]
 CHECK-DAG:   %[[RETURN_ALLOCA_INT:.*]] = ptrtoint ptr %[[RETURN_ALLOCA]] to i64

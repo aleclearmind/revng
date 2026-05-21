@@ -45,7 +45,7 @@ Functions:
     Prototype:
       Kind: DefinedType
       Definition: "/TypeDefinitions/100012-CABIFunctionDefinition"
-  - Name: raw_primitives_on_stack
+  - Name: raw_return_small_aggregate
     Prototype:
       Kind: DefinedType
       Definition: "/TypeDefinitions/100013-RawFunctionDefinition"
@@ -318,7 +318,7 @@ TypeDefinitions:
           Definition: "/TypeDefinitions/100003-StructDefinition"
   - Kind: StructDefinition
     ID: 100009
-    Size: 64
+    Size: 16
     Fields:
       - Offset: 0
         Type:

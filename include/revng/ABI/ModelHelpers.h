@@ -103,6 +103,9 @@ layoutToLLVMFunctionType(llvm::LLVMContext &Context,
     }
 
     auto *LLVMType = getLLVMTypeForScalar(Context, *ArgumentType);
+    // WIP
+    if (LLVMType->isIntegerTy())
+      revng_assert(LLVMType->getIntegerBitWidth() != 96);
     FunctionArguments.push_back(LLVMType);
   }
 
@@ -120,12 +123,10 @@ layoutToLLVMFunctionType(llvm::LLVMContext &Context,
     if constexpr (LegacyLocalVariables) {
       ReturnType = TargetPointerSizedInteger;
     } else {
-      if (Layout.hasSPTAR()) {
-        const model::Type &ReturnAggregate = Layout.returnValueAggregateType();
-        size_t ReturnSize = *ReturnAggregate.size();
-        auto *Int8 = llvm::IntegerType::getInt8Ty(Context);
-        ReturnType = llvm::ArrayType::get(Int8, ReturnSize);
-      }
+      const model::Type &ReturnAggregate = Layout.returnValueAggregateType();
+      size_t ReturnSize = *ReturnAggregate.size();
+      auto *Int8 = llvm::IntegerType::getInt8Ty(Context);
+      ReturnType = llvm::ArrayType::get(Int8, ReturnSize);
     }
   } break;
 

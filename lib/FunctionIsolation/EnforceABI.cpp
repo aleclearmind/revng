@@ -43,6 +43,8 @@
 #include "revng/Support/MetaAddress.h"
 #include "revng/Support/OpaqueFunctionsPool.h"
 
+#include "revng/Model/Generated/Early/Register.h"
+
 using namespace llvm;
 
 class EnforceABI final : public pipeline::FunctionPassImpl {
@@ -381,6 +383,7 @@ void EnforceABI::handleRegularFunctionCall(const MetaAddress &CallerAddress,
     const auto *Prototype = Binary.prototypeOrDefault(ModelFunc.prototype());
     revng_assert(Prototype != nullptr);
     auto UsedRegisters = abi::FunctionType::usedRegisters(*Prototype);
+
     Callee = getOrCreateNewFunction(*Callee, UsedRegisters);
   }
 

@@ -41,7 +41,6 @@ using namespace llvm;
 using std::tie;
 using StackSpan = abi::FunctionType::Layout::Argument::StackSpan;
 
-
 static Logger Log("segregate-stack-accesses");
 
 // WIP: use StackSpan?
@@ -155,10 +154,16 @@ struct StoredByte {
 /// Users of this class are expected to follow this rule.
 class StackAccessRedirector {
 private:
+  /// This is for debugging purposes only
+  Value *Reference = nullptr;
   std::map<int64_t, std::pair<int64_t, Value *>> Map;
 
 public:
   StackAccessRedirector() = default;
+  StackAccessRedirector(Value *Reference) : Reference(Reference) {}
+
+public:
+  Value *reference() const { return Reference; }
 
 public:
   void recordSpan(const OffsetRange &Span, Value *BaseAddress) {
@@ -176,8 +181,7 @@ public:
     revng_assert(verify());
   }
 
-  void recordSpan(const StackSpan &Span,
-                  Value *BaseAddress) {
+  void recordSpan(const StackSpan &Span, Value *BaseAddress) {
     OffsetRange NewRange{ static_cast<int64_t>(Span.Offset),
                           static_cast<int64_t>(Span.Offset + Span.Size) };
     return recordSpan(NewRange, BaseAddress);
@@ -193,9 +197,6 @@ public:
     auto It = Map.upper_bound(Offset);
     if (It == Map.begin()) {
       revng_log(Log, "Not found");
-      // WIP
-      dump();
-      revng_abort();
       return std::nullopt;
     }
 
@@ -209,9 +210,6 @@ public:
     auto MaybeEnd = (OSI(Offset) + Size).value();
     if (not MaybeEnd or Offset >= SpanEnd or *MaybeEnd > SpanEnd) {
       revng_log(Log, "Not found");
-      // WIP
-      dump();
-      revng_abort();
       return std::nullopt;
     }
 
@@ -336,8 +334,11 @@ public:
   void dump() const debug_function { dump(dbg, 0); }
 };
 
+class InstructionStackUsage;
+
 class CallSite {
 public:
+  size_t CallInstructionPushSize = 0;
   std::optional<int64_t> MaybeStackOffset;
   abi::FunctionType::Layout Layout;
   CallInst *OldCall = nullptr;
@@ -350,12 +351,37 @@ public:
 public:
   static CallSite make(CallInst *SSACSCall,
                        const model::TypeDefinition &Prototype,
-                       CallInst *InitLocalSPCall,
-                       uint64_t StackFrameSize,
                        size_t CallInstructionPushSize);
 
+public:
+  void processSPTAR(CallInst *InitLocalSPCall,
+                    uint64_t StackFrameSize,
+                    const MemoryAreaState &State,
+                    const InstructionStackUsage &StackUsage);
+
 private:
-  void processSPTAR(CallInst *InitLocalSPCall, uint64_t StackFrameSize);
+  std::optional<OffsetRange>
+  stackArgumentRange(const abi::FunctionType::Layout::Argument &Argument)
+    const {
+
+    if (not Argument.Stack.has_value())
+      return std::nullopt;
+
+    OverflowSafeInt<int64_t> StackSizeAtCallSite(MaybeStackOffset.value());
+
+    auto StartOffset = StackSizeAtCallSite + Argument.Stack->Offset
+                       + CallInstructionPushSize;
+    auto EndOffset = StartOffset + Argument.Stack->Size;
+
+    if (not StartOffset or not EndOffset) {
+      revng_log(Log,
+                "Overflow in computing stack argument offset, "
+                "ignoring");
+      return std::nullopt;
+    }
+
+    return OffsetRange(*StartOffset, *EndOffset);
+  }
 
 public:
   template<typename T>
@@ -396,10 +422,10 @@ public:
 
 CallSite CallSite::make(CallInst *SSACSCall,
                         const model::TypeDefinition &Prototype,
-                        CallInst *InitLocalSPCall,
-                        uint64_t StackFrameSize,
                         size_t CallInstructionPushSize) {
   CallSite Result;
+  Result.Redirector = StackAccessRedirector(SSACSCall);
+  Result.CallInstructionPushSize = CallInstructionPushSize;
 
   // Get stack size at call site
   auto MaybeArgument = getSignedConstantArg(SSACSCall, 0);
@@ -418,81 +444,17 @@ CallSite CallSite::make(CallInst *SSACSCall,
     revng_log(Log, "Stack size unknown, ignoring stack arguments");
   } else {
 
-    OverflowSafeInt<int64_t> StackSizeAtCallSite(*Result.MaybeStackOffset);
     auto &Layout = Result.Layout;
 
     // Clobber stack arguments
     for (const auto &Argument : Layout.Arguments) {
-      if (Argument.Stack.has_value()) {
-        auto StartOffset = StackSizeAtCallSite + Argument.Stack->Offset
-                           + CallInstructionPushSize;
-        auto EndOffset = StartOffset + Argument.Stack->Size;
-
-        if (not StartOffset or not EndOffset) {
-          revng_log(Log,
-                    "Overflow in computing stack argument offset, "
-                    "ignoring");
-          continue;
-        }
-
-        Result.StackArgumentRanges.emplace_back(*StartOffset, *EndOffset);
+      if (auto MaybeStackRange = Result.stackArgumentRange(Argument)) {
+        Result.StackArgumentRanges.push_back(MaybeStackRange.value());
       }
     }
-
-    Result.processSPTAR(InitLocalSPCall, StackFrameSize);
   }
 
   return Result;
-}
-
-void CallSite::processSPTAR(CallInst *InitLocalSPCall,
-                            uint64_t StackFrameSize) {
-  if (not Layout.hasSPTAR())
-    return;
-
-  revng_log(Log, "Processing SPTAR");
-  LoggerIndent Indent(Log);
-
-  if (StackFrameSize == 0) {
-    revng_log(Log, "The stack frame has size 0, bailing out");
-    return;
-  }
-
-  // We expect the first argument to be (revng_undefined_local_sp + constant)
-
-  if (InitLocalSPCall == nullptr) {
-    revng_log(Log, "Couldn't find call to revng_undefined_local_sp");
-    return;
-  }
-
-  revng_assert(OldCall->arg_size() > 0);
-  Value *SPTAR = OldCall->getArgOperand(0);
-
-  using namespace PatternMatch;
-  llvm::ConstantInt *Offset = nullptr;
-  if (not match(SPTAR,
-                m_Add(m_Specific(InitLocalSPCall), m_ConstantInt(Offset)))) {
-    revng_log(Log,
-              "Couldn't identify offset in the stack of the stack-allocated "
-              "return value passed via SPTAR");
-    return;
-  }
-
-  revng_assert(Offset != nullptr);
-
-  OverflowSafeInt<int64_t> EndOffset(Offset->getSExtValue());
-  auto ReturnValueSize = Layout.returnValueAggregateType().size();
-  revng_assert(ReturnValueSize.has_value());
-
-  EndOffset += ReturnValueSize.value();
-  if (EndOffset) {
-    // Record the call itself as the writer of the SPTAR range
-    StackReturnValueRange = { Offset->getSExtValue(), *EndOffset };
-  } else {
-    revng_log(Log,
-              "Overflow while computing the final offset of "
-              "StackReturnValueRange");
-  }
 }
 
 using CallSiteMap = std::map<CallInst *, CallSite>;
@@ -631,6 +593,78 @@ findAllWriters(const MemoryAreaState &State,
   return Result;
 }
 
+void CallSite::processSPTAR(CallInst *InitLocalSPCall,
+                            uint64_t StackFrameSize,
+                            const MemoryAreaState &State,
+                            const InstructionStackUsage &StackUsage) {
+
+  if (not Layout.hasSPTAR())
+    return;
+
+  revng_log(Log, "Processing SPTAR");
+  LoggerIndent Indent(Log);
+
+  if (StackFrameSize == 0) {
+    revng_log(Log, "The stack frame has size 0, bailing out");
+    return;
+  }
+
+  // We expect the first argument to be (revng_undefined_local_sp + constant)
+
+  if (InitLocalSPCall == nullptr) {
+    revng_log(Log, "Couldn't find call to revng_undefined_local_sp");
+    return;
+  }
+
+  revng_assert(Layout.Arguments.size() > 0);
+  auto &SPTARArgument = Layout.Arguments[0];
+  Value *SPTAR = nullptr;
+  if (SPTARArgument.Stack.has_value()) {
+    // WIP: doc what's happening
+    revng_assert(SPTARArgument.Registers.size() == 0);
+    if (auto MaybeRange = stackArgumentRange(SPTARArgument)) {
+      auto Writers = findAllWriters(State, StackUsage, { *MaybeRange });
+      if (Writers.size() == 1 and isa<StoreInst>(Writers[0])) {
+        SPTAR = cast<StoreInst>(Writers[0])->getValueOperand();
+      } else {
+        // WIP: report failure
+      }
+    } else {
+      // WIP: report failure
+    }
+  } else {
+    revng_assert(SPTARArgument.Registers.size() > 0);
+    revng_assert(OldCall->arg_size() > 0);
+    SPTAR = OldCall->getArgOperand(0);
+  }
+
+  using namespace PatternMatch;
+  llvm::ConstantInt *Offset = nullptr;
+  if (SPTAR == nullptr or not match(SPTAR,
+                m_Add(m_Specific(InitLocalSPCall), m_ConstantInt(Offset)))) {
+    revng_log(Log,
+              "Couldn't identify offset in the stack of the stack-allocated "
+              "return value passed via SPTAR");
+    return;
+  }
+
+  revng_assert(Offset != nullptr);
+
+  OverflowSafeInt<int64_t> EndOffset(Offset->getSExtValue());
+  auto ReturnValueSize = Layout.returnValueAggregateType().size();
+  revng_assert(ReturnValueSize.has_value());
+
+  EndOffset += ReturnValueSize.value();
+  if (EndOffset) {
+    // Record the call itself as the writer of the SPTAR range
+    StackReturnValueRange = { Offset->getSExtValue(), *EndOffset };
+  } else {
+    revng_log(Log,
+              "Overflow while computing the final offset of "
+              "StackReturnValueRange");
+  }
+}
+
 struct SegregateStackAccessesMFI : public SetUnionLattice<MemoryAreaState> {
 public:
   using Label = llvm::BasicBlock *;
@@ -720,7 +754,7 @@ struct SortByFunction {
   }
 };
 
-inline CallInst *getAsModelGEP(revng::IRBuilder &B,
+static CallInst *getAsModelGEP(revng::IRBuilder &B,
                                Value *Pointer,
                                const model::Type &ModelType) {
   Module &M = *B.GetInsertBlock()->getModule();
@@ -756,13 +790,9 @@ struct PointersMetadata {
 static PointersMetadata getPointerMetadata(const abi::FunctionType::Layout &L) {
   PointersMetadata Result;
 
-  if (L.hasSPTAR()) {
-    // SPTAR always returns a pointer on LLVM IR.
-    Result.ReturnValues.push_back(true);
-  } else {
-    for (const auto &R : L.ReturnValues)
+  for (const auto &R : L.ReturnValues)
+    if (L.returnMethod() != abi::FunctionType::ReturnMethod::ModelAggregate)
       Result.ReturnValues.push_back(R.Type->isPointer());
-  }
 
   for (const auto &R : L.Arguments)
     Result.Arguments.push_back(R.Type->isPointer());
@@ -857,8 +887,6 @@ public:
 
     llvm::Function &NewFunction = upgradeLocalFunction(&Function);
     segregateStackAccesses(NewFunction);
-
-    NewFunction.dump();
 
     return true;
   }
@@ -982,7 +1010,8 @@ private:
       Redirector = &It->second;
     }
 
-    auto RecordStackArgument = [this, &Redirector] (const StackSpan &StackSpan, Value *V) {
+    auto RecordStackArgument = [this, &Redirector](const StackSpan &StackSpan,
+                                                   Value *V) {
       // 0x0000
       //               -16
       //   _________   -8
@@ -1333,35 +1362,33 @@ private:
     // analysis points
     SegregateStackAccessesMFI::ExtraStateType MFPExtraState;
     CallSiteMap CallSites;
-    if (SSACS != nullptr) {
-      for (BasicBlock &BB : F) {
-        for (Instruction &I : BB) {
-          if (CallInst *SSACSCall = getCallTo(&I, SSACS)) {
-            // Handle call to stack_size_at_call_site
-            revng_log(Log, "Processing " << getName(SSACSCall));
-            LoggerIndent Indent(Log);
+    for (BasicBlock &BB : F) {
+      for (Instruction &I : BB) {
+        CallInst *SSACSCall = nullptr;
+        if (SSACS != nullptr and (SSACSCall = getCallTo(&I, SSACS))) {
+          // Handle call to stack_size_at_call_site
+          revng_log(Log, "Processing " << getName(SSACSCall));
+          LoggerIndent Indent(Log);
 
-            // We want to obtain the state of the MFI before the call
-            MFPExtraState.registerAsInterestingBefore(SSACSCall);
+          // We want to obtain the state of the MFI before the call
+          MFPExtraState.registerAsInterestingBefore(SSACSCall);
 
-            const auto &Prototype = *getCallSitePrototype(Binary, SSACSCall);
-            CallSites[SSACSCall] = CallSite::make(SSACSCall,
-                                                  Prototype,
-                                                  InitLocalSPCall,
-                                                  StackFrameSize,
-                                                  CallInstructionPushSize);
+          const auto &Prototype = *getCallSitePrototype(Binary, SSACSCall);
+          CallSites[SSACSCall] = CallSite::make(SSACSCall,
+                                                Prototype,
+                                                CallInstructionPushSize);
 
-            if (Log.isEnabled()) {
-              CallSites[SSACSCall].dump(Log);
-              Log << DoLog;
-            }
-
-          } else if (isa<LoadInst>(&I) and getStackOffset(&I).has_value()) {
-            // Handle load from the stack
-
-            // We want to obtain the state of the MFI before the load
-            MFPExtraState.registerAsInterestingBefore(&I);
+          if (Log.isEnabled()) {
+            CallSites[SSACSCall].dump(Log);
+            Log << DoLog;
           }
+
+        } else if (isa<LoadInst>(&I) and getStackOffset(&I).has_value()) {
+          // Handle load from the stack
+          revng_log(Log, "Registering " << getName(&I) << " as interesting");
+
+          // We want to obtain the state of the MFI before the load
+          MFPExtraState.registerAsInterestingBefore(&I);
         }
       }
     }
@@ -1400,11 +1427,15 @@ private:
         revng_log(Log, "Handling " << getName(SSACSCall));
         LoggerIndent Indent(Log);
 
+        const auto &AnalysisResult = MFPExtraState.getBefore(SSACSCall);
+        CallSite.processSPTAR(InitLocalSPCall,
+                              StackFrameSize,
+                              AnalysisResult,
+                              StackUsage);
+
         auto *CallSiteRedirector = Redirectors.record(handleCallSite(SSACSCall,
                                                                      CallSite));
         Redirectors.registerOwner(CallSiteRedirector, SSACSCall);
-
-        const auto &AnalysisResult = MFPExtraState.getBefore(SSACSCall);
 
         if (Log.isEnabled()) {
           Log << "Status of the analysis at call site:\n";
@@ -1475,7 +1506,9 @@ private:
             if (Redirector == nullptr) {
               revng_log(Log, "No redirector");
             } else {
-              revng_log(Log, "Redirecting using " << Redirector);
+              revng_log(Log,
+                        "Redirecting using "
+                          << getName(Redirector->reference()));
               handleMemoryAccess(*Redirector, &I);
             }
           }
@@ -1514,12 +1547,8 @@ private:
     Function *Caller = SSACSCall->getParent()->getParent();
 
     // Unpack CallSite
-    const auto &[MaybeStackOffsetAtCallSite,
-                 Layout,
-                 OldCall,
-                 _1,
-                 _2,
-                 _3] = CallSite;
+    const auto
+      &[_1, MaybeStackOffsetAtCallSite, Layout, OldCall, _2, _3, _4] = CallSite;
 
     revng::IRBuilder B(OldCall);
 
@@ -1561,21 +1590,21 @@ private:
        &Redirector,
        &MaybeStackOffsetAtCallSite](const StackSpan &StackSpan, Value *V) {
         revng_assert(MaybeStackOffsetAtCallSite);
-        // Record its portion of the stack for redirection
+      // Record its portion of the stack for redirection
 
-        // 0x0000
-        // _____________ -40
-        //  |_________|  -32 Saved return address, MaybeStackSize
-        //  |_________|  -24 struct StackArguments { uint64_t Offset0;
-        //  |_________|  -16  uint64_t Offset8; };
-        // _|_________|_ -8  Local variable
-        //  |_________|  +0  Saved return address
-        // _|_________|_
-        //
-        // 0xffff
+      // 0x0000
+      // _____________ -40
+      //  |_________|  -32 Saved return address, MaybeStackSize
+      //  |_________|  -24 struct StackArguments { uint64_t Offset0;
+      //  |_________|  -16  uint64_t Offset8; };
+      // _|_________|_ -8  Local variable
+      //  |_________|  +0  Saved return address
+      // _|_________|_
+      //
+      // 0xffff
 
-        // WIP
-        #define PRINT(what) dbg << #what << ": " << what << "\n";
+// WIP
+#define PRINT(what) dbg << #what << ": " << what << "\n";
         PRINT(*MaybeStackOffsetAtCallSite);
         PRINT(CallInstructionPushSize);
         PRINT(StackSpan.Offset);
@@ -1640,6 +1669,9 @@ private:
         // In legacy mode, wrap it into a ModelGEP at offset 0.
         if constexpr (LegacyLocalVariables) {
           Pointer = getAsModelGEP(B, Pointer, *ModelArgument.Type);
+          // WIP
+          dbg << "asd1:";
+          Pointer->dump();
         }
         Arguments.push_back(Pointer);
       } break;
@@ -1765,8 +1797,19 @@ private:
           OffsetInNewArgument += OldSize;
         }
 
-        if (ModelArgument.Stack)
-          RecordStackArgument(*ModelArgument.Stack, StackArgsAddress);
+        if (ModelArgument.Stack) {
+          if (MaybeStackOffsetAtCallSite) {
+            RecordStackArgument(*ModelArgument.Stack, StackArgsAddress);
+          } else {
+            if (not MessageEmitted) {
+              MessageEmitted = true;
+              emitMessage(OldCall,
+                          "Ignoring stack arguments for this call site: "
+                          "stack size at call site unknown",
+                          OldCall->getDebugLoc());
+            }
+          }
+        }
 
         Arguments.push_back(StackArgsAllocation);
       } break;
@@ -1821,9 +1864,17 @@ private:
       if (HasSPTAR and LegacyLocalVariables) {
         // In legacy mode, make a reference out of ReturnValuePointer, using a
         // ModelGEP at offset 0.
-        getAsModelGEP(B, ReturnValuePointer, Layout.returnValueAggregateType());
+        ReturnValuePointer = Arguments[0];
+       auto *Asd= getAsModelGEP(B, ReturnValuePointer, Layout.returnValueAggregateType());
+                  // WIP
+          dbg << "asd2:";
+          Asd->dump();
+
         revng_assert(not OldReturnType->isStructTy());
+        // WIP
+        revng::forceVerify(&M);
         OldCall->replaceAllUsesWith(ReturnValuePointer);
+        revng::forceVerify(&M);
       } else {
         revng_assert(not ReturnValuePointer);
         const auto &ReturnType = Layout.returnValueAggregateType();
@@ -1841,10 +1892,18 @@ private:
           B.CreateStore(NewCall, Allocation);
           ReturnValuePointer = IntAddress;
 
-          // StackReturnValueRange is already relative to the initial value of
-          // the stack pointer
-          Redirector.recordSpan(CallSite.StackReturnValueRange.value(),
-                                IntAddress);
+          if (HasSPTAR) {
+            if (CallSite.StackReturnValueRange.has_value()) {
+              // StackReturnValueRange is already relative to the initial value
+              // of the stack pointer
+              Redirector.recordSpan(*CallSite.StackReturnValueRange,
+                                    IntAddress);
+            } else {
+              revng_log(Log,
+                        "Warning: couldn't resolve the location of the pointer "
+                        "to the storage for the return value in the SPTAR");
+            }
+          }
         }
 
         // We're returning an aggregate, but not via SPTAR, we're using one or
@@ -2079,6 +2138,7 @@ private:
                                  const model::TypeDefinition &Prototype) {
     using namespace abi::FunctionType;
     auto Layout = Layout::make(Prototype);
+
     LLVMContext &Context = OldFunction->getContext();
     auto Architecture = Binary.Architecture();
 
