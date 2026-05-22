@@ -964,6 +964,7 @@ getAvailableExpressions(Function &F,
     .Instance = &AvailableExpressionsMF,
     .Flow = Graph,
     .Bottom = &Bottom,
+    .ExtremalLabels = &Entries,
     .EntryLabels = &Entries
   };
 

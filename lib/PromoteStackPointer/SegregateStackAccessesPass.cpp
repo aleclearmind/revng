@@ -482,10 +482,15 @@ public:
   StackUsage getWrites(Instruction *I) const {
     StackUsage Result;
 
+    // WIP
+    I->dump();
+
     if (auto *Call = dyn_cast<CallInst>(I)) {
       auto It = CallSites.find(Call);
       if (It == CallSites.end())
         return Result;
+
+dbg << "lolyeah\n";
 
       auto &CallSite = It->second;
 
@@ -501,6 +506,8 @@ public:
       auto MaybeStartStackOffset = getStackOffset(I);
       if (not MaybeStartStackOffset)
         return Result;
+
+      dbg << "asd1123\n";
 
       int64_t StartStackOffset = *MaybeStartStackOffset;
       unsigned AccessSize = getMemoryAccessSize(I);
@@ -620,6 +627,7 @@ void CallSite::processSPTAR(CallInst *InitLocalSPCall,
   auto &SPTARArgument = Layout.Arguments[0];
   Value *SPTAR = nullptr;
   if (SPTARArgument.Stack.has_value()) {
+    revng_log(Log, "SPTAR is on the stack");
     // WIP: doc what's happening
     revng_assert(SPTARArgument.Registers.size() == 0);
     if (auto MaybeRange = stackArgumentRange(SPTARArgument)) {
@@ -633,6 +641,7 @@ void CallSite::processSPTAR(CallInst *InitLocalSPCall,
       // WIP: report failure
     }
   } else {
+    revng_log(Log, "SPTAR is in a register");
     revng_assert(SPTARArgument.Registers.size() > 0);
     revng_assert(OldCall->arg_size() > 0);
     SPTAR = OldCall->getArgOperand(0);
@@ -1334,6 +1343,9 @@ private:
     revng_log(Log,
               "Segregating "
                 << model::CNameBuilder(Binary).name(ModelFunction));
+
+    // WIP
+    F.dump();
 
     LoggerIndent Indent(Log);
 

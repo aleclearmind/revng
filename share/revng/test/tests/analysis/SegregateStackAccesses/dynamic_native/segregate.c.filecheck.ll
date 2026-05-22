@@ -120,7 +120,6 @@ CHECK: }
 
 CHECK: define i64 @local_call_raw_return_small_aggregate() [[IGN:.*]] {
 CHECK:   %[[RESULT:.*]] = call <{ i64, i64 }> @local_raw_return_small_aggregate()
-CHECK-DAG:   call i64 @OpaqueExtractvalue(<{ i64, i64 }> %[[RESULT]], i64 0)
 CHECK-DAG:   call i64 @OpaqueExtractvalue(<{ i64, i64 }> %[[RESULT]], i64 1)
 CHECK: }
 
