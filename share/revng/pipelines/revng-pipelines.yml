@@ -649,9 +649,7 @@ Branches:
             UsedContainers: [functions.bc.zstd]
             Passes:
               - hoist-struct-phis
-              - print-module
               - segregate-stack-accesses
-              - print-module
               - cleanup-stack-size-markers
               - dce
               - sroa-noarrays

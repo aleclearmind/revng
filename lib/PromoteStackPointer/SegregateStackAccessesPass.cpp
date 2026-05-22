@@ -473,24 +473,37 @@ public:
   };
 
 private:
-  const CallSiteMap &CallSites;
+  CallSiteMap &CallSites;
+  CallInst *InitLocalSPCall = nullptr;
+  uint64_t StackFrameSize = 0;
 
 public:
-  InstructionStackUsage(const CallSiteMap &CallSites) : CallSites(CallSites) {}
+  InstructionStackUsage(CallSiteMap &CallSites, CallInst *InitLocalSPCall, uint64_t StackFrameSize) : CallSites(CallSites),InitLocalSPCall(InitLocalSPCall), StackFrameSize(StackFrameSize) {}
 
 public:
+
+  void detectStackReturnValueRange(Instruction *I, const MemoryAreaState &State)  {
+    auto *Call = dyn_cast<CallInst>(I);
+    if (Call == nullptr)
+      return;
+
+    auto It = CallSites.find(Call);
+    if (It == CallSites.end())
+      return;
+
+    It->second.processSPTAR(InitLocalSPCall,
+                            StackFrameSize,
+                            State,
+                            *this);
+  }
+
   StackUsage getWrites(Instruction *I) const {
     StackUsage Result;
-
-    // WIP
-    I->dump();
 
     if (auto *Call = dyn_cast<CallInst>(I)) {
       auto It = CallSites.find(Call);
       if (It == CallSites.end())
         return Result;
-
-dbg << "lolyeah\n";
 
       auto &CallSite = It->second;
 
@@ -506,8 +519,6 @@ dbg << "lolyeah\n";
       auto MaybeStartStackOffset = getStackOffset(I);
       if (not MaybeStartStackOffset)
         return Result;
-
-      dbg << "asd1123\n";
 
       int64_t StartStackOffset = *MaybeStartStackOffset;
       unsigned AccessSize = getMemoryAccessSize(I);
@@ -682,10 +693,10 @@ public:
   using ExtraStateType = MFP::ExtraState<llvm::Instruction *, MemoryAreaState>;
 
 private:
-  const InstructionStackUsage &StackUsage;
+  InstructionStackUsage &StackUsage;
 
 public:
-  SegregateStackAccessesMFI(const InstructionStackUsage &StackUsage) :
+  SegregateStackAccessesMFI(InstructionStackUsage &StackUsage) :
     StackUsage(StackUsage) {}
 
 private:
@@ -693,6 +704,9 @@ private:
                           MemoryAreaState &StackBytes) const {
     revng_log(Log, "Processing " << getName(&I));
     LoggerIndent Indent(Log);
+
+    // WIP: is this monotone?
+    StackUsage.detectStackReturnValueRange(&I, StackBytes);
 
     auto Usage = StackUsage.getWrites(&I);
 
@@ -1344,9 +1358,6 @@ private:
               "Segregating "
                 << model::CNameBuilder(Binary).name(ModelFunction));
 
-    // WIP
-    F.dump();
-
     LoggerIndent Indent(Log);
 
     // Lookup the redirector, if any
@@ -1405,7 +1416,7 @@ private:
       }
     }
 
-    InstructionStackUsage StackUsage(CallSites);
+    InstructionStackUsage StackUsage(CallSites, InitLocalSPCall, StackFrameSize);
 
     // Run the analysis
     {
@@ -1440,10 +1451,12 @@ private:
         LoggerIndent Indent(Log);
 
         const auto &AnalysisResult = MFPExtraState.getBefore(SSACSCall);
+        #if 0
         CallSite.processSPTAR(InitLocalSPCall,
                               StackFrameSize,
                               AnalysisResult,
                               StackUsage);
+                              #endif
 
         auto *CallSiteRedirector = Redirectors.record(handleCallSite(SSACSCall,
                                                                      CallSite));
@@ -1681,9 +1694,6 @@ private:
         // In legacy mode, wrap it into a ModelGEP at offset 0.
         if constexpr (LegacyLocalVariables) {
           Pointer = getAsModelGEP(B, Pointer, *ModelArgument.Type);
-          // WIP
-          dbg << "asd1:";
-          Pointer->dump();
         }
         Arguments.push_back(Pointer);
       } break;
@@ -1872,21 +1882,15 @@ private:
     Value *ReturnValuePointer = nullptr;
     switch (Layout.returnMethod()) {
     case ReturnMethod::ModelAggregate: {
-      revng_log(Log, "This call site return a model aggregate");
+      revng_log(Log, "This call site returns a model aggregate");
       if (HasSPTAR and LegacyLocalVariables) {
         // In legacy mode, make a reference out of ReturnValuePointer, using a
         // ModelGEP at offset 0.
         ReturnValuePointer = Arguments[0];
-       auto *Asd= getAsModelGEP(B, ReturnValuePointer, Layout.returnValueAggregateType());
-                  // WIP
-          dbg << "asd2:";
-          Asd->dump();
+        getAsModelGEP(B, ReturnValuePointer, Layout.returnValueAggregateType());
 
         revng_assert(not OldReturnType->isStructTy());
-        // WIP
-        revng::forceVerify(&M);
         OldCall->replaceAllUsesWith(ReturnValuePointer);
-        revng::forceVerify(&M);
       } else {
         revng_assert(not ReturnValuePointer);
         const auto &ReturnType = Layout.returnValueAggregateType();
@@ -1944,6 +1948,8 @@ private:
               eraseFromParent(Extractor);
             }
           }
+
+	  revng_assert(OldCall->use_empty());
         } else {
           OldCall->replaceAllUsesWith(ReturnValuePointer);
         }
@@ -1986,6 +1992,8 @@ private:
             eraseFromParent(Extractor);
           }
         }
+
+	revng_assert(OldCall->use_empty());
       } else {
         revng_assert(not OldReturnType->isStructTy());
         OldCall->replaceAllUsesWith(NewCall);

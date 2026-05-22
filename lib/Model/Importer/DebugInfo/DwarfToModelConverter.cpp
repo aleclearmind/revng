@@ -298,9 +298,8 @@ void DwarfToModelConverter::createType(const DWARFDie &Die) {
       return;
     }
 
-    // WIP: OK?
-    if (Size > 8) {
-      reportIgnoredDie(Die, "Ignoring primitives larger than 8");
+    if (Kind == model::PrimitiveKind::Float and Size > 8) {
+      reportIgnoredDie(Die, "Ignoring floating-point primitives larger than 8");
       createInvalidPrimitivePlaceholder(Die);
       return;
     }

@@ -70,6 +70,7 @@ public:
 
     if (PhiSize == 1) {
       Phi->replaceAllUsesWith(Phi->getIncomingValue(0));
+      Phi->eraseFromParent();
       return;
     }
 
