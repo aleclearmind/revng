@@ -31,7 +31,7 @@
 
 namespace TypeShrinking {
 
-// WIP: typo
+// WIP FINAL: typo
 class BitLivenwssAnnotatedWriter : public llvm::AssemblyAnnotationWriter {
 private:
   const BitLivenessAnalysisResults &Results;
@@ -283,14 +283,20 @@ BitLivenessPass::Result BitLivenessPass::run(llvm::Function &F,
     }
   }
 
-  auto MFPRes = MFP::getMaximalFixedPoint<
-    BitLivenessAnalysis>({ .Flow = &DataFlowGraph,
-                           .ExtremalValue = &Top,
-                           .ExtremalLabels = &ExtremalLabels });
-  static_assert(MFP::HasNodeRange<
-                llvm::GraphTraits<typename BitLivenessAnalysis::GraphType>>);
+  MFP::MFPConfiguration<BitLivenessAnalysis> Configuration{
+    .Flow = &DataFlowGraph,
+    .ExtremalValue = &Top,
+    .ExtremalLabels = &ExtremalLabels
+  };
+
+  auto Results = MFP::getMaximalFixedPoint<BitLivenessAnalysis>(Configuration);
+
+  using GraphType = typename BitLivenessAnalysis::GraphType;
+  using GraphTraits = llvm::GraphTraits<GraphType>;
+  static_assert(MFP::HasNodeRange<GraphTraits>);
+
   BitLivenessPass::Result Result;
-  for (auto &[Label, MFPResult] : MFPRes) {
+  for (auto &[Label, MFPResult] : Results) {
     auto &Entry = Result[Label->Instruction];
     Entry.Result = MFPResult.InValue;
     Entry.Operands = MFPResult.OutValue;
@@ -299,7 +305,7 @@ BitLivenessPass::Result BitLivenessPass::run(llvm::Function &F,
   if (llvm::Error Error = DataFlowGraph.verify())
     revng_abort(revng::unwrapError(std::move(Error)).c_str());
 
-  MFP::Graph<BitLivenessAnalysis> MFPGraph(&DataFlowGraph, MFPRes);
+  MFP::Graph<BitLivenessAnalysis> MFPGraph(&DataFlowGraph, Results);
 
   return Result;
 }

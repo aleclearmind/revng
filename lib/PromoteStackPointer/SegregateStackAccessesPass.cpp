@@ -1,5 +1,3 @@
-#pragma clang optimize off
-
 //
 // This file is distributed under the MIT License. See LICENSE.md for details.
 //
@@ -43,8 +41,6 @@ using StackSpan = abi::FunctionType::Layout::Argument::StackSpan;
 
 static Logger Log("segregate-stack-accesses");
 
-// WIP: use StackSpan?
-/// Start -> end offset pair
 struct OffsetRange {
   int64_t Start = 0;
   int64_t End = 0;
@@ -306,8 +302,6 @@ public:
     };
     revng_assert(llvm::any_of(CallSiteRedirectors, IsRedirector));
 
-    // WIP: emit warning, set to nullptr and in get use default in case of
-    //      nullptr
     RedirectorForInstruction[I] = Redirector;
   }
 };
@@ -467,7 +461,6 @@ using CallSiteMap = std::map<CallInst *, CallSite>;
 class InstructionStackUsage {
 public:
   struct StackUsage {
-    // WIP: merge?
     OffsetRanges Clobbers;
     OffsetRanges Writes;
   };
@@ -478,11 +471,16 @@ private:
   uint64_t StackFrameSize = 0;
 
 public:
-  InstructionStackUsage(CallSiteMap &CallSites, CallInst *InitLocalSPCall, uint64_t StackFrameSize) : CallSites(CallSites),InitLocalSPCall(InitLocalSPCall), StackFrameSize(StackFrameSize) {}
+  InstructionStackUsage(CallSiteMap &CallSites,
+                        CallInst *InitLocalSPCall,
+                        uint64_t StackFrameSize) :
+    CallSites(CallSites),
+    InitLocalSPCall(InitLocalSPCall),
+    StackFrameSize(StackFrameSize) {}
 
 public:
-
-  void detectStackReturnValueRange(Instruction *I, const MemoryAreaState &State)  {
+  void detectStackReturnValueRange(Instruction *I,
+                                   const MemoryAreaState &State) {
     auto *Call = dyn_cast<CallInst>(I);
     if (Call == nullptr)
       return;
@@ -491,10 +489,7 @@ public:
     if (It == CallSites.end())
       return;
 
-    It->second.processSPTAR(InitLocalSPCall,
-                            StackFrameSize,
-                            State,
-                            *this);
+    It->second.processSPTAR(InitLocalSPCall, StackFrameSize, State, *this);
   }
 
   StackUsage getWrites(Instruction *I) const {
@@ -549,10 +544,15 @@ public:
 
       int64_t StartStackOffset = *MaybeStartStackOffset;
       unsigned AccessSize = getMemoryAccessSize(I);
-      // WIP: overflow
-      int64_t EndStackOffset = StartStackOffset + AccessSize;
+      auto EndStackOffset = OverflowSafeInt<int64_t>(StartStackOffset)
+                            + AccessSize;
 
-      return { { StartStackOffset, EndStackOffset } };
+      if (EndStackOffset) {
+        return { { StartStackOffset, *EndStackOffset } };
+      } else {
+        revng_log(Log, "Overflow in StartStackOffset + AccessSize, ignoring");
+        return {};
+      }
     }
 
     return Result;
@@ -566,8 +566,8 @@ findAllWriters(const MemoryAreaState &State,
   SmallVector<Instruction *> Result;
   DenseMap<Instruction *, unsigned> StoreBytesSeen;
 
-  // WIP LOW: we should sort Ranges and process pair-wise ProgramPoint and
-  //          Ranges to avoid full scans
+  // WIP CLANKER: we should sort Ranges and process pair-wise ProgramPoint and
+  //              Ranges to avoid full scans
   for (const StoredByte &Byte : State) {
     auto Offset = Byte.StackOffset;
 
@@ -591,7 +591,8 @@ findAllWriters(const MemoryAreaState &State,
     }
   }
 
-  // WIP: explain
+  // Purge entries where the read-write pairs where the read does not fully
+  // contain the read or vice-versa, i.e., skip partial overlaps.
   auto RangesSize = getRangeSize(Ranges);
   auto PartiallyOverlaps = [&](Instruction *I) {
     auto OtherRangeSize = getRangeSize(StackUsage.getWrites(I).Writes);
@@ -639,17 +640,25 @@ void CallSite::processSPTAR(CallInst *InitLocalSPCall,
   Value *SPTAR = nullptr;
   if (SPTARArgument.Stack.has_value()) {
     revng_log(Log, "SPTAR is on the stack");
-    // WIP: doc what's happening
+
+    // The SPTAR is on the stack, we need to try to fetch the only write for
+    // that stack slot writing a constant offset from the initial value of the
+    // stack pointer.
     revng_assert(SPTARArgument.Registers.size() == 0);
     if (auto MaybeRange = stackArgumentRange(SPTARArgument)) {
       auto Writers = findAllWriters(State, StackUsage, { *MaybeRange });
+
+      // Hopefully there's a single reaching store targeting this slot
       if (Writers.size() == 1 and isa<StoreInst>(Writers[0])) {
         SPTAR = cast<StoreInst>(Writers[0])->getValueOperand();
       } else {
-        // WIP: report failure
+        revng_log(Log,
+                  "We were looking for a single store writing the SPTAR "
+                  "argument, but failed");
       }
     } else {
-      // WIP: report failure
+      revng_log(Log,
+                "Can't obtain the offset range of the SPTAR stack argument");
     }
   } else {
     revng_log(Log, "SPTAR is in a register");
@@ -660,8 +669,9 @@ void CallSite::processSPTAR(CallInst *InitLocalSPCall,
 
   using namespace PatternMatch;
   llvm::ConstantInt *Offset = nullptr;
-  if (SPTAR == nullptr or not match(SPTAR,
-                m_Add(m_Specific(InitLocalSPCall), m_ConstantInt(Offset)))) {
+  if (SPTAR == nullptr
+      or not match(SPTAR,
+                   m_Add(m_Specific(InitLocalSPCall), m_ConstantInt(Offset)))) {
     revng_log(Log,
               "Couldn't identify offset in the stack of the stack-allocated "
               "return value passed via SPTAR");
@@ -705,7 +715,7 @@ private:
     revng_log(Log, "Processing " << getName(&I));
     LoggerIndent Indent(Log);
 
-    // WIP: is this monotone?
+    // WIP FEZ: is this monotone?
     StackUsage.detectStackReturnValueRange(&I, StackBytes);
 
     auto Usage = StackUsage.getWrites(&I);
@@ -1286,7 +1296,7 @@ private:
         if constexpr (LegacyLocalVariables) {
           ToReturn = ReturnValueAllocation;
         } else {
-          // WIP: alignment is 8. check other as well.
+          // TODO: we should review all the CreateLoad alignments
           ToReturn = B.CreateLoad(NewReturnType, ReturnValueAllocation);
         }
         B.CreateRet(ToReturn);
@@ -1347,7 +1357,7 @@ private:
   }
 
   void segregateStackAccesses(Function &F) {
-    // WIP: this function has quite some function-specific state, we could have
+    // WIP FINAL CLANKER: this function has quite some function-specific state, we could have
     //      a new class, possibly friend to this
 
     // Get model::Function
@@ -1416,7 +1426,9 @@ private:
       }
     }
 
-    InstructionStackUsage StackUsage(CallSites, InitLocalSPCall, StackFrameSize);
+    InstructionStackUsage StackUsage(CallSites,
+                                     InitLocalSPCall,
+                                     StackFrameSize);
 
     // Run the analysis
     {
@@ -1451,12 +1463,6 @@ private:
         LoggerIndent Indent(Log);
 
         const auto &AnalysisResult = MFPExtraState.getBefore(SSACSCall);
-        #if 0
-        CallSite.processSPTAR(InitLocalSPCall,
-                              StackFrameSize,
-                              AnalysisResult,
-                              StackUsage);
-                              #endif
 
         auto *CallSiteRedirector = Redirectors.record(handleCallSite(SSACSCall,
                                                                      CallSite));
@@ -1482,15 +1488,15 @@ private:
     if (not Redirectors.empty()) {
       revng_log(Log, "Handling memory accesses");
       LoggerIndent Indent(Log);
-      for (BasicBlock &BB : F)
-        for (Instruction &I : BB)
+      for (BasicBlock &BB : F) {
+        for (Instruction &I : BB) {
           if (isa<LoadInst>(&I) or isa<StoreInst>(&I)) {
             if (isa<LoadInst>(&I))
               revng_log(Log, "Handling load " << getName(&I));
             else
               revng_log(Log, "Handling store " << getName(&I));
             LoggerIndent Indent(Log);
-            // WIP: push this logic into handleMemoryAccess
+            // WIP CLANKER: push this logic into handleMemoryAccess
 
             if (Log.isEnabled()) {
               auto StackOffset = getStackOffset(&I);
@@ -1504,7 +1510,7 @@ private:
 
             // Find the correct redirector
             const StackAccessRedirector *Redirector = nullptr;
-            // WIP: getStackOffset(&I).has_value is compute before as well,
+            // WIP CLANKER: getStackOffset(&I).has_value is compute before as well,
             //      create a set of loads from the stack?
             if (isa<LoadInst>(&I) and getStackOffset(&I).has_value()) {
               // For load instructions, we get the redirector of its writers
@@ -1537,6 +1543,8 @@ private:
               handleMemoryAccess(*Redirector, &I);
             }
           }
+        }
+      }
     }
 
     //
@@ -1608,31 +1616,24 @@ private:
 
     SmallVector<llvm::Value *, 4> Arguments;
 
-    // WIP NEXT: -MaybeStackSize.value_or(0) + CallInstructionPushSize
     StackAccessRedirector Redirector;
     auto RecordStackArgument =
       [this,
        &Redirector,
        &MaybeStackOffsetAtCallSite](const StackSpan &StackSpan, Value *V) {
         revng_assert(MaybeStackOffsetAtCallSite);
-      // Record its portion of the stack for redirection
+        // Record its portion of the stack for redirection
 
-      // 0x0000
-      // _____________ -40
-      //  |_________|  -32 Saved return address, MaybeStackSize
-      //  |_________|  -24 struct StackArguments { uint64_t Offset0;
-      //  |_________|  -16  uint64_t Offset8; };
-      // _|_________|_ -8  Local variable
-      //  |_________|  +0  Saved return address
-      // _|_________|_
-      //
-      // 0xffff
-
-// WIP
-#define PRINT(what) dbg << #what << ": " << what << "\n";
-        PRINT(*MaybeStackOffsetAtCallSite);
-        PRINT(CallInstructionPushSize);
-        PRINT(StackSpan.Offset);
+        // 0x0000
+        // _____________ -40
+        //  |_________|  -32 Saved return address, MaybeStackSize
+        //  |_________|  -24 struct StackArguments { uint64_t Offset0;
+        //  |_________|  -16  uint64_t Offset8; };
+        // _|_________|_ -8  Local variable
+        //  |_________|  +0  Saved return address
+        // _|_________|_
+        //
+        // 0xffff
 
         Redirector.recordSpan(*MaybeStackOffsetAtCallSite
                                 + CallInstructionPushSize + StackSpan,
@@ -1850,8 +1851,8 @@ private:
 
     revng_assert(Redirector.verify());
 
-    // Handle SPTAR by dropping the actual argument
-    // WIP: why did we add it in the first place?
+    // Remove the SPTAR from the argument list, it's not there in the new
+    // prototype
     if (HasSPTAR) {
       revng_assert(Arguments.size() > 0);
       Arguments.erase(Arguments.begin());
@@ -1949,7 +1950,7 @@ private:
             }
           }
 
-	  revng_assert(OldCall->use_empty());
+          revng_assert(OldCall->use_empty());
         } else {
           OldCall->replaceAllUsesWith(ReturnValuePointer);
         }
@@ -1993,7 +1994,7 @@ private:
           }
         }
 
-	revng_assert(OldCall->use_empty());
+        revng_assert(OldCall->use_empty());
       } else {
         revng_assert(not OldReturnType->isStructTy());
         OldCall->replaceAllUsesWith(NewCall);
@@ -2015,69 +2016,6 @@ private:
     revng_assert(CalleeType->getPointerTo() == CalledValue->getType());
 
     return Redirector;
-#if 0
-    if (not MaybeStackSize)
-      return;
-
-    int64_t StackSizeAtCallSite = *MaybeStackSize;
-
-    // Identify all the StoredBytes targeting this call sites' stack
-    // arguments
-    struct StoreInfo {
-      unsigned Count = 0;
-      int64_t Offset = 0;
-    };
-    std::map<StoreInst *, StoreInfo> Stores;
-
-    for (const StoredByte &Byte : AnalysisResult) {
-      if (auto *Writer = dyn_cast<StoreInst>(Byte.Writer)) {
-        StoreInfo &Info = Stores[Writer];
-        Info.Count += 1;
-        Info.Offset = Byte.StackOffset - Byte.StoreOffset;
-      }
-    }
-
-    // Process MarkedStores
-    for (const auto &[Store, Info] : Stores) {
-      auto Size = getMemoryAccessSize(Store);
-      int64_t StackArgumentsOffset = (Info.Offset + StackSizeAtCallSite
-                                      - CallInstructionPushSize);
-
-      revng_log(Log, "Considering " << getName(Store));
-      LoggerIndent Indent(Log);
-      revng_log(Log, "Size: " << Size);
-      revng_log(Log, "Info.Count: " << Info.Count);
-      revng_log(Log, "Info.Offset: " << Info.Count);
-      revng_log(Log, "StackSizeAtCallSite: " << StackSizeAtCallSite);
-      revng_log(Log, "StackArgumentsOffset: " << StackArgumentsOffset);
-
-      if (Size != Info.Count) {
-        revng_log(Log,
-                  "Warning: " << getName(Store) << " has size " << Size
-                              << " but only " << Info.Count << " bytes target "
-                              << getName(SSACSCall)
-                              << " stack arguments. Ignoring.");
-        continue;
-      }
-
-      // OK, this call site owns this store entirely
-
-      // Check if we're writing to the return address
-      int64_t NegativePushSize = -CallInstructionPushSize;
-      bool TargetsReturnAddress = (StackArgumentsOffset == NegativePushSize
-                                   and Size == CallInstructionPushSize);
-
-      if (TargetsReturnAddress) {
-        // This store targets the saved return address slot, drop it
-        revng_log(Log,
-                  "This store is saving the return address: we'll drop it");
-        ToPurge.insert(Store);
-      } else if (auto NewBase = Redirector.computeNewBase(Info.Offset, Size)) {
-        // This ends up in a stack argument
-        replace(Store, NewBase->second, NewBase->first);
-      }
-    }
-#endif
   }
 
   void handleMemoryAccess(const StackAccessRedirector &Redirector,

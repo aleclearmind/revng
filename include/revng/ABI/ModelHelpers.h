@@ -103,9 +103,6 @@ layoutToLLVMFunctionType(llvm::LLVMContext &Context,
     }
 
     auto *LLVMType = getLLVMTypeForScalar(Context, *ArgumentType);
-    // WIP
-    if (LLVMType->isIntegerTy())
-      revng_assert(LLVMType->getIntegerBitWidth() != 96);
     FunctionArguments.push_back(LLVMType);
   }
 

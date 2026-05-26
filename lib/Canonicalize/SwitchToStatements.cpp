@@ -958,9 +958,10 @@ getAvailableExpressions(Function &F,
   ProgramPointsCFG *Graph = &Result.ProgramPointsGraph;
   ProgramPointNode *Entry = Graph->getEntryNode();
 
-  AEMFP<IsLegacy> AvailableExpressionsMF{ AA, MST };
+  using AEMFP = AEMFP<IsLegacy>;
+  AEMFP AvailableExpressionsMF{ AA, MST };
   std::vector Entries = { Entry };
-  MFP::MFPConfiguration<AEMFP<IsLegacy>> Configuration{
+  MFP::MFPConfiguration<AEMFP> Configuration{
     .Instance = &AvailableExpressionsMF,
     .Flow = Graph,
     .Bottom = &Bottom,
@@ -970,7 +971,7 @@ getAvailableExpressions(Function &F,
 
   // std::exchange here is only needed to make revng check-conventions happy.
   std::exchange(Result.AvailableExpressions,
-                MFP::getMaximalFixedPoint<AEMFP<IsLegacy>>(Configuration));
+                MFP::getMaximalFixedPoint<AEMFP>(Configuration));
   return Result;
 }
 

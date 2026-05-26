@@ -279,12 +279,17 @@ BOOST_AUTO_TEST_CASE(ReachingDefinitionsTest) {
     ReachingDefinitions RD(F.Function);
     auto DefaultValue = RD.defaultValue();
     std::vector ExtremalLabels{ F.Entry };
-    auto Results = MFP::getMaximalFixedPoint<
-      ReachingDefinitions>({ .Instance = &RD,
-                             .Flow = &F.Function,
-                             .Bottom = &DefaultValue,
-                             .ExtremalValue = &DefaultValue,
-                             .ExtremalLabels = &ExtremalLabels });
+
+    MFP::MFPConfiguration<ReachingDefinitions> Configuration{
+      .Instance = &RD,
+      .Flow = &F.Function,
+      .Bottom = &DefaultValue,
+      .ExtremalValue = &DefaultValue,
+      .ExtremalLabels = &ExtremalLabels
+    };
+
+    using namespace MFP;
+    auto Results = getMaximalFixedPoint<ReachingDefinitions>(Configuration);
     return ReachingDefinitions::compute(Results[F.Exit].OutValue,
                                         Results[F.Sink].OutValue);
   };

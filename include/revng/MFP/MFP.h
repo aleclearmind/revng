@@ -1,7 +1,7 @@
 #pragma once
 
+#include "revng/ADT/STLExtras.h"
 #include "revng/Support/Debug.h"
-#pragma clang optimize off
 
 //
 // This file is distributed under the MIT License. See LICENSE.md for details.
@@ -27,7 +27,7 @@
 #include "revng/ADT/GenericGraph.h"
 #include "revng/ADT/ReversePostOrderTraversal.h"
 
-// WIP: lowercase
+// WIP FINAL: lowercase
 namespace MFP {
 
 inline Logger NullLogger("");
@@ -141,7 +141,8 @@ auto successors(typename GT::NodeRef From) {
   return llvm::make_range(GT::child_begin(From), GT::child_end(From));
 }
 
-// WIP: doc
+/// Placeholder struct to be employed when an MFI does not need to track extra
+/// state
 struct NoExtraState {};
 
 template<typename MFI>
@@ -198,93 +199,35 @@ template<MonotoneFrameworkInstance MFI>
 using MFIResultMap = ResultMap<typename MFI::Label,
                                typename MFI::LatticeElement>;
 
+template<MonotoneFrameworkInstance MFIType>
+struct MFPConfiguration {
+  /// The monotone framework instance
+  const MFIType *Instance = nullptr;
+
+  /// The graph on which the monotone framework will run
+  typename MFIType::GraphType Flow;
+
+  /// The value that will be used to initialize all the non-extremal nodes
+  const typename MFIType::LatticeElement *Bottom = nullptr;
+
+  /// The value that will be used to initialize all the extremal nodes
+  const typename MFIType::LatticeElement *ExtremalValue = nullptr;
+
+  /// The list of extremal labels
+  const std::vector<typename MFIType::Label> *ExtremalLabels = nullptr;
+
+  /// The list of entry labels
+  const std::vector<typename MFIType::Label> *EntryLabels = nullptr;
+
+  ///
+  ExtraStateType<MFIType> *ExtraState = nullptr;
+
+  /// A logger where the advancement of the MFP algorithm should be reported
+  Logger *Logger = nullptr;
+};
+
 /// Compute the solution to the given instance of a monotone framework.
 ///
-/// \tparam MFIType the type of the monotone framework instance. See the
-//          MonotoneFrameworkInstance concept.
-/// \tparam GT the GraphTraits to use to use. Defaults to
-///         GraphTraits<MFIType::GraphType>. To navigate the inverse graph pass
-///         GraphTraits<Inverse<...>>.
-///
-/// \param MFI the monotone framework instance.
-/// \param Flow the graph on which the monotone framework will run.
-/// \param Bottom the value that will be used to initialize all the non-extremal
-//         nodes.
-/// \param ExtremalValue
-/// \param ExtremalLabels
-/// \param EntryNodes
-/// \param Logger a logger where the advancement of the MFP algorithm should be
-//         reported.
-
-// WIP: reorder arguments
-// WIP: can we make InitialNodes optional (instead of having an overload)?
-
-// include/revng/RestructureCFG/RegionCFGTreeImpl.h
-// ({}, &Graph, {}, {}, {}, Exits)
-
-// lib/Canonicalize/SwitchToStatements.cpp
-// ({},
-//   TheGraph,
-//   Bottom,
-//   Empty,
-//   { TheGraph->getEntryNode() })
-
-// lib/EarlyFunctionAnalysis/AnalyzeRegisterUsage.cpp
-// (Liveness,
-// &Function.Function,
-// Liveness.defaultValue(),
-// Liveness.defaultValue(),
-// { Function.ReturnNode })
-
-// (ReachingDefinitions,
-// &Function.Function,
-// DefaultValue,
-// DefaultValue,
-// { EntryNode })
-
-// // lib/FunctionIsolation/PromoteCSVs.cpp
-// ({},
-// &CallGraph,
-// {},
-// {},
-// {},
-// {})
-// // lib/PromoteStackPointer/SegregateStackAccessesPass.cpp
-// ({},
-// &F,
-// {},
-// {},
-// { Entry })
-
-// // lib/TypeShrinking/BitLiveness.cpp
-// ({},
-// &DataFlowGraph,
-// 0,
-// Top,
-// ExtremalLabels)
-
-// // lib/ValueMaterializer/AdvancedValueInfo.cpp
-// (AVIMFI,
-// &CFEG,
-// {},
-// ExtremalValue,
-// InitialNodes,
-// InitialNodes,
-// AVILogger)
-
-// // tests/unit/RegisterUsageAnalyses.cpp
-// (LA,
-// &Function,
-// LA.defaultValue(),
-// LA.defaultValue(),
-// { Entry })
-
-// (RD,
-// &F.Function,
-// RD.defaultValue(),
-// RD.defaultValue(),
-// { F.Entry })
-
 /// Compute the maximum fixed points of an instance of monotone framework GT an
 /// instance of llvm::GraphTraits that tells us how to visit the graph LGT a
 /// graph type that tells us how to visit the subgraph induced by a node in the
@@ -294,23 +237,23 @@ using MFIResultMap = ResultMap<typename MFI::Label,
 template<MonotoneFrameworkInstance MFIType,
          typename GT = llvm::GraphTraits<typename MFIType::GraphType>>
 MFIResultMap<MFIType>
-getMaximalFixedPointImpl(const MFIType &MFI,
-                         typename MFIType::GraphType Flow,
-                         typename MFIType::LatticeElement Bottom,
-                         typename MFIType::LatticeElement ExtremalValue,
-                         const std::vector<typename MFIType::Label>
-                           &ExtremalLabels,
-                         const std::vector<typename MFIType::Label> &EntryNodes,
-                         ExtraStateType<MFIType> &ExtraState,
-                         Logger &Logger = NullLogger) {
+getMaximalFixedPointImpl(MFPConfiguration<MFIType> &Configuration) {
   using Label = typename MFIType::Label;
   using LatticeElement = typename MFIType::LatticeElement;
+
+  auto &Instance = notNull(Configuration.Instance);
+  auto &Bottom = notNull(Configuration.Bottom);
+  auto &ExtremalValue = notNull(Configuration.ExtremalValue);
+  auto &ExtremalLabels = notNull(Configuration.ExtremalLabels);
+  auto &EntryLabels = notNull(Configuration.EntryLabels);
+  auto &ExtraState = notNull(Configuration.ExtraState);
+  auto &Logger = notNull(Configuration.Logger);
 
   if (Logger.isEnabled()) {
     revng_log(Logger, "Initializing extremal labels");
     LoggerIndent Indent(Logger);
     Logger << "Extremal value:\n";
-    MFP::dump(*Logger.getAsLLVMStream(), 1, ExtremalValue);
+    MFP::dump(*Logger.getAsLLVMStream(), 1, Configuration.ExtremalValue);
     Logger << DoLog;
 
     Logger << "Extremal labels:" << DoLog;
@@ -328,7 +271,7 @@ getMaximalFixedPointImpl(const MFIType &MFI,
 
     Logger << "Initial labels:" << DoLog;
     LoggerIndent Indent4(Logger);
-    for (Label InitialNode : EntryNodes) {
+    for (Label InitialNode : EntryLabels) {
       MFP::dumpLabel(*Logger.getAsLLVMStream(), InitialNode);
       Logger << DoLog;
     }
@@ -360,7 +303,7 @@ getMaximalFixedPointImpl(const MFIType &MFI,
   {
     using NodeSet = llvm::SmallSet<Label, 8>;
     NodeSet Visited;
-    for (Label Start : EntryNodes) {
+    for (Label Start : EntryLabels) {
 
       if (Visited.contains(Start))
         continue;
@@ -411,9 +354,9 @@ getMaximalFixedPointImpl(const MFIType &MFI,
     // Run the transfer function.
     revng_log(Logger, "Running the transfer function");
     Logger.indent();
-    const auto New = MFI.applyTransferFunction(Start,
-                                               LabelAnalysis.InValue,
-                                               ExtraState);
+    const auto New = Instance.applyTransferFunction(Start,
+                                                    LabelAnalysis.InValue,
+                                                    ExtraState);
     Logger.unindent();
 
     if (Logger.isEnabled()) {
@@ -447,13 +390,14 @@ getMaximalFixedPointImpl(const MFIType &MFI,
       }
       LoggerIndent Indent(Logger);
 
-      if (not MFI.isLessOrEqual(LabelAnalysis.OutValue,
-                                SuccessorResults.InValue)) {
+      if (not Instance.isLessOrEqual(LabelAnalysis.OutValue,
+                                     SuccessorResults.InValue)) {
         // We need to re-enqueue
 
         // Combine the old value with the new incoming value and update it
-        SuccessorResults.InValue = MFI.combineValues(SuccessorResults.InValue,
-                                                     LabelAnalysis.OutValue);
+        SuccessorResults.InValue = Instance
+                                     .combineValues(SuccessorResults.InValue,
+                                                    LabelAnalysis.OutValue);
 
         if (Logger.isEnabled()) {
           Logger << "Enqueuing. New initial value:\n";
@@ -473,18 +417,6 @@ getMaximalFixedPointImpl(const MFIType &MFI,
 
   return AnalysisResult;
 }
-
-template<MonotoneFrameworkInstance MFIType>
-struct MFPConfiguration {
-  const MFIType *Instance = nullptr;
-  typename MFIType::GraphType Flow;
-  const typename MFIType::LatticeElement *Bottom = nullptr;
-  const typename MFIType::LatticeElement *ExtremalValue = nullptr;
-  const std::vector<typename MFIType::Label> *ExtremalLabels = nullptr;
-  const std::vector<typename MFIType::Label> *EntryLabels = nullptr;
-  ExtraStateType<MFIType> *ExtraState = nullptr;
-  Logger *Logger = nullptr;
-};
 
 template<MonotoneFrameworkInstance MFIType,
          typename GT = llvm::GraphTraits<typename MFIType::GraphType>>
@@ -529,7 +461,7 @@ getMaximalFixedPoint(MFPConfiguration<MFIType> Configuration) {
     // WIP: else should work here. why doesn't it?
     {
       if constexpr (HasNodeRange<GT>) {
-        auto Flow = Configuration.Flow;
+        auto &Flow = Configuration.Flow;
         for (auto Node :
              llvm::make_range(GT::nodes_begin(Flow), GT::nodes_end(Flow))) {
           DefaultEntryNodes.push_back(Node);
@@ -549,14 +481,7 @@ getMaximalFixedPoint(MFPConfiguration<MFIType> Configuration) {
   if (Configuration.ExtraState == nullptr)
     Configuration.ExtraState = &DefaultExtraState;
 
-  return getMaximalFixedPointImpl<MFIType, GT>(*Configuration.Instance,
-                                               Configuration.Flow,
-                                               *Configuration.Bottom,
-                                               *Configuration.ExtremalValue,
-                                               *Configuration.ExtremalLabels,
-                                               *Configuration.EntryLabels,
-                                               *Configuration.ExtraState,
-                                               *Configuration.Logger);
+  return getMaximalFixedPointImpl<MFIType, GT>(Configuration);
 }
 
 } // namespace MFP

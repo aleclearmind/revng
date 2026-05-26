@@ -1,5 +1,3 @@
-// WIP: rename into something more generic on MFP
-
 //
 // This file is distributed under the MIT License. See LICENSE.md for details.
 //
@@ -100,14 +98,15 @@ BOOST_AUTO_TEST_CASE(DiamondMFP) {
   IntSet ExtremalValue;
   std::vector<OperationNode *> ExtremalLabels{ G.Entry };
 
-  auto Result = MFP::getMaximalFixedPoint<
-    OperationsMFI>(MFP::MFPConfiguration<OperationsMFI>{
+  MFP::MFPConfiguration<OperationsMFI> Configuration{
     .Instance = &MFI,
     .Flow = &G.Graph,
     .Bottom = &Bottom,
     .ExtremalValue = &ExtremalValue,
     .ExtremalLabels = &ExtremalLabels,
-  });
+  };
+
+  auto Result = MFP::getMaximalFixedPoint<OperationsMFI>(Configuration);
 
   BOOST_TEST(Result.at(G.Entry).InValue == IntSet{});
   BOOST_TEST(Result.at(G.Entry).OutValue == IntSet({ 1 }));
@@ -144,14 +143,15 @@ BOOST_AUTO_TEST_CASE(LoopMFP) {
   IntSet ExtremalValue;
   std::vector<OperationNode *> ExtremalLabels{ A };
 
-  auto Result = MFP::getMaximalFixedPoint<
-    OperationsMFI>(MFP::MFPConfiguration<OperationsMFI>{
+  MFP::MFPConfiguration<OperationsMFI> Configuration{
     .Instance = &MFI,
     .Flow = &Graph,
     .Bottom = &Bottom,
     .ExtremalValue = &ExtremalValue,
     .ExtremalLabels = &ExtremalLabels,
-  });
+  };
+
+  auto Result = MFP::getMaximalFixedPoint<OperationsMFI>(Configuration);
 
   // The loop forces B and C's incoming values to include {1, 2, 3, 4} once
   // the analysis converges.
@@ -186,14 +186,16 @@ BOOST_AUTO_TEST_CASE(ExtraStateRecordingOnDiamond) {
   IntSet ExtremalValue;
   std::vector<OperationNode *> ExtremalLabels{ G.Entry };
 
-  auto Result = MFP::getMaximalFixedPoint<
-    OperationsMFI>(MFP::MFPConfiguration<OperationsMFI>{
+  MFP::MFPConfiguration<OperationsMFI> Configuration{
     .Instance = &MFI,
     .Flow = &G.Graph,
     .Bottom = &Bottom,
     .ExtremalValue = &ExtremalValue,
     .ExtremalLabels = &ExtremalLabels,
-    .ExtraState = &S });
+    .ExtraState = &S
+  };
+
+  auto Result = MFP::getMaximalFixedPoint<OperationsMFI>(Configuration);
 
   // Sanity: the fixed-point lattice values must match the diamond test above.
   BOOST_TEST(Result.at(G.Tail).OutValue == IntSet({ 1, 2, 3, 4 }));

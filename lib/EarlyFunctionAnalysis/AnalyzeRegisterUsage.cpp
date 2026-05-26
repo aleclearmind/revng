@@ -265,12 +265,16 @@ RUAResults analyzeRegisterUsage(Function *F,
     auto DefaultValue = Liveness.defaultValue();
     std::vector<const rua::BlockNode *> ExtremalLabels{ Function.ReturnNode };
 
-    auto AnalysisResult = MFP::getMaximalFixedPoint<
-      rua::Liveness>({ .Instance = &Liveness,
-                       .Flow = &Function.Function,
-                       .Bottom = &DefaultValue,
-                       .ExtremalValue = &DefaultValue,
-                       .ExtremalLabels = &ExtremalLabels });
+    MFP::MFPConfiguration<rua::Liveness> Configuration{
+      .Instance = &Liveness,
+      .Flow = &Function.Function,
+      .Bottom = &DefaultValue,
+      .ExtremalValue = &DefaultValue,
+      .ExtremalLabels = &ExtremalLabels
+    };
+
+    using namespace MFP;
+    auto AnalysisResult = getMaximalFixedPoint<rua::Liveness>(Configuration);
 
     // Collect registers alive at the entry
     revng_log(Log, "Registers alive at the entry of the function:");
@@ -310,13 +314,17 @@ RUAResults analyzeRegisterUsage(Function *F,
     auto *EntryNode = Function.Function.getEntryNode();
     std::vector ExtremalLabels{ EntryNode };
 
-    auto AnalysisResult = MFP::getMaximalFixedPoint<
-      rua::ReachingDefinitions>(MFP::MFPConfiguration<rua::ReachingDefinitions>{
+    MFP::MFPConfiguration<rua::ReachingDefinitions> Configuration{
       .Instance = &ReachingDefinitions,
       .Flow = &Function.Function,
       .Bottom = &DefaultValue,
       .ExtremalValue = &DefaultValue,
-      .ExtremalLabels = &ExtremalLabels });
+      .ExtremalLabels = &ExtremalLabels
+    };
+
+    using namespace MFP;
+    auto GetMaximalFixedPoint = getMaximalFixedPoint<rua::ReachingDefinitions>;
+    auto AnalysisResult = GetMaximalFixedPoint(Configuration);
 
     auto Compute = [&AnalysisResult, &Function](rua::Function::Node *Node,
                                                 bool Before) {

@@ -298,7 +298,6 @@ void DetectStackSize::electFunctionStackFrameSize(FunctionStackInfo &FSI) {
 
   std::optional<uint64_t> StackSize;
 
-  // WIP: why?
   // If we have call site, the stack size is the highest value of the
   // following expression:
   //
