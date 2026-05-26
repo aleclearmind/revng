@@ -34,7 +34,14 @@ concept IsObjectFile = std::derived_from<T, llvm::object::ObjectFile>;
 class LDDTree {
 public:
   using SymbolSet = std::set<std::string>;
-  using SymbolAddressMap = std::map<std::string, uint64_t>;
+
+  struct Symbol {
+    uint64_t Address = 0;
+    bool IsIfunc = false;
+  };
+
+  using SymbolMap = std::map<std::string, Symbol>;
+
   class DependencyFile;
   class Dependency;
 
@@ -217,14 +224,14 @@ public:
 class LDDTree::Dependency : public DependencyFile {
 private:
   /// Subset of the requested symbols that are provided by this library.
-  SymbolAddressMap ProvidedSymbols;
+  SymbolMap ProvidedSymbols;
 
   /// Identifier the library requesting this.
   std::string RequestedBy;
 
 public:
   Dependency(DependencyFile &&TheDependencyFile,
-             SymbolAddressMap ProvidedSymbols,
+             SymbolMap ProvidedSymbols,
              std::string RequestedBy) :
     DependencyFile(std::move(TheDependencyFile)),
     ProvidedSymbols(std::move(ProvidedSymbols)),
@@ -252,9 +259,10 @@ public:
       Stream << " none\n";
     } else {
       Stream << "\n";
-      for (auto &[Name, Address] : ProvidedSymbols)
+      for (auto &[Name, Symbol] : ProvidedSymbols)
         Stream << Prefix << "  " << Name << " at 0x"
-               << llvm::utohexstr(Address, true) << "\n";
+               << llvm::utohexstr(Symbol.Address, true)
+               << (Symbol.IsIfunc ? " (IFUNC)" : "") << "\n";
     }
   }
 };

@@ -34,9 +34,9 @@ public:
   using QueueEntry = typename Queue<ResolutionInfo>::Entry;
 
 public:
-  static std::vector<std::pair<std::string, uint64_t>>
+  static LDDTree::SymbolMap
   getExportedSymbols(const COFFObjectFile &COFFObjectFile) {
-    std::vector<std::pair<std::string, uint64_t>> Result;
+    LDDTree::SymbolMap Result;
 
     for (const ExportDirectoryEntryRef &Entry :
          COFFObjectFile.export_directories()) {
@@ -56,7 +56,7 @@ public:
         continue;
       }
 
-      Result.push_back({ SymbolName.str(), RVA });
+      Result[SymbolName.str()] = LDDTree::Symbol{ .Address = RVA };
     }
 
     return Result;

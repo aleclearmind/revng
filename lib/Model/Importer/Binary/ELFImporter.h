@@ -9,6 +9,7 @@
 #include "revng/Model/Importer/Binary/BinaryImporterHelper.h"
 #include "revng/Model/Importer/Binary/Options.h"
 #include "revng/Model/RawBinaryView.h"
+#include "revng/Support/LDDTree.h"
 #include "revng/Support/MetaAddress.h"
 
 #include "DwarfReader.h"
@@ -52,6 +53,11 @@ public:
 };
 
 class ELFImporterBase {
+public:
+  /// Every defined function symbol encountered while parsing the static
+  /// and/or dynamic symbol tables, keyed by raw address.
+  std::map<uint64_t, LDDTree::Symbol> SymbolsByAddress;
+
 public:
   virtual ~ELFImporterBase() = default;
 
@@ -161,6 +167,9 @@ private:
   void parseDynamicSymbol(llvm::object::Elf_Sym_Impl<T> &Symbol,
                           llvm::StringRef Dynstr);
 
+  /// Record a defined code symbol in SymbolsByAddress, logging duplicates.
+  void recordSymbol(const llvm::object::Elf_Sym_Impl<T> &Symbol);
+
 protected:
   template<typename Q>
   using SmallVectorImpl = llvm::SmallVectorImpl<Q>;
@@ -186,5 +195,5 @@ protected:
 
 /// Enumerate the function symbols exported through the dynamic symbol table
 /// of an ELF binary
-std::vector<std::pair<std::string, uint64_t>>
+LDDTree::SymbolMap
 elfExportedSymbols(const llvm::object::ELFObjectFileBase &ObjectFile);

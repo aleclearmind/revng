@@ -9,27 +9,25 @@
 #include "revng/Model/Binary.h"
 #include "revng/Model/Importer/Binary/BinaryDescriptor.h"
 #include "revng/Support/Configuration.h"
+#include "revng/Support/LDDTree.h"
 
 struct ImporterOptions;
 
 class DwarfImporter {
-public:
-  using AddressWhitelist = std::set<uint64_t>;
-
 private:
   TupleTree<model::Binary> &Model;
   std::vector<std::string> LoadedFiles;
   using DwarfID = std::pair<size_t, size_t>;
   std::map<DwarfID, model::UpcastableType> DwarfToModel;
-  const AddressWhitelist *FunctionWhitelist = nullptr;
+
+  /// When unset the importer accepts every subprogram; otherwise only those
+  /// whose low PC appears in the map are kept.
+  std::optional<std::map<uint64_t, LDDTree::Symbol>> WhitelistByAddress;
 
 public:
   DwarfImporter(TupleTree<model::Binary> &Model,
-                const std::optional<AddressWhitelist> &FunctionWhitelist) :
-    Model(Model),
-    FunctionWhitelist(FunctionWhitelist.has_value() ?
-                        &*FunctionWhitelist :
-                        static_cast<const AddressWhitelist *>(nullptr)) {}
+                std::optional<std::map<uint64_t, LDDTree::Symbol>> Whitelist) :
+    Model(Model), WhitelistByAddress(std::move(Whitelist)) {}
 
 public:
   model::UpcastableType findType(DwarfID ID) {
@@ -47,10 +45,20 @@ public:
   TupleTree<model::Binary> &getModel() { return Model; }
 
   bool isFunctionAllowed(uint64_t Address) const {
-    if (FunctionWhitelist == nullptr)
+    if (not WhitelistByAddress.has_value())
       return true;
 
-    return FunctionWhitelist->contains(Address);
+    return WhitelistByAddress->contains(Address);
+  }
+
+  bool isIfunc(uint64_t Address) const {
+    if (not WhitelistByAddress.has_value())
+      return false;
+
+    auto It = WhitelistByAddress->find(Address);
+    if (It == WhitelistByAddress->end())
+      return false;
+    return It->second.IsIfunc;
   }
 
 public:

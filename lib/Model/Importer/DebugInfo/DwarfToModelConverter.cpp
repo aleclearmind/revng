@@ -861,6 +861,33 @@ DwarfToModelConverter::getSubprogramPrototype(const DWARFDie &InitialDie) {
   return Model->recordNewType(std::move(NewType)).second;
 }
 
+/// Substitute a glibc IFUNC resolver prototype (no args, returns a pointer
+/// to a CABIFunctionDefinition) with the pointee prototype.
+static model::UpcastableType
+unwrapIfuncResolverPrototype(model::Binary &Binary,
+                             uint64_t Address,
+                             model::UpcastableType Prototype) {
+  auto *Definition = Prototype->tryGetAsDefinition();
+  auto *Resolver = dyn_cast_or_null<model::CABIFunctionDefinition>(Definition);
+  if (Resolver == nullptr or not Resolver->Arguments().empty()
+      or Resolver->ReturnType().isEmpty()
+      or not Resolver->ReturnType()->isPointer())
+    return Prototype;
+
+  auto *PointeeDefinition = Resolver->ReturnType()
+                              ->getPointee()
+                              .tryGetAsDefinition();
+  if (not isa_and_nonnull<model::CABIFunctionDefinition>(PointeeDefinition))
+    return Prototype;
+
+  revng_log(DILogger,
+            "Ifunc resolver at 0x" << llvm::utohexstr(Address, true)
+                                   << ": substituting resolver prototype "
+                                   << Resolver->ID() << " with pointee CABI "
+                                   << PointeeDefinition->ID());
+  return Binary.makeType(PointeeDefinition->key());
+}
+
 void DwarfToModelConverter::createFunctions() {
   revng_log(DILogger, "createFunctions");
   LoggerIndent Indent(DILogger);
@@ -876,11 +903,13 @@ void DwarfToModelConverter::createFunctions() {
       std::string SymbolName = getName(Die);
 
       MetaAddress LowPC;
+      uint64_t RawLowPC = 0;
       if (auto MaybeLowPC = getAddress(Die)) {
         // TODO: do a proper check to see if it's in a valid segment
         if (*MaybeLowPC != 0) {
           if (Importer.isFunctionAllowed(*MaybeLowPC)) {
             LowPC = relocate(fromPC(*MaybeLowPC));
+            RawLowPC = *MaybeLowPC;
           } else {
             revng_log(DILogger,
                       "Ignoring disallowed function at 0x"
@@ -917,6 +946,13 @@ void DwarfToModelConverter::createFunctions() {
           if (Prototype.isEmpty()) {
             revng_log(DILogger, "Can't get the prototype");
           } else if (not Function->prototype()) {
+            // For STT_GNU_IFUNC the DWARF describes the resolver, not the
+            // resolved function; unwrap it.
+            if (Importer.isIfunc(RawLowPC))
+              Prototype = unwrapIfuncResolverPrototype(*Model,
+                                                       RawLowPC,
+                                                       std::move(Prototype));
+
             revng_log(DILogger,
                       "Assigning prototype "
                         << Prototype->tryGetAsDefinition()->ID());

@@ -17,31 +17,29 @@
 #include "revng/Model/Importer/Binary/BinaryDescriptor.h"
 #include "revng/Model/Importer/Binary/BinaryImporterHelper.h"
 #include "revng/Support/Configuration.h"
+#include "revng/Support/LDDTree.h"
 
 struct ImporterOptions;
 
 class PDBImporter : public BinaryImporterHelper {
-public:
-  using AddressWhitelist = std::set<uint64_t>;
-
 private:
   MetaAddress ImageBase;
   llvm::pdb::PDBFile *ThePDBFile = nullptr;
   llvm::pdb::NativeSession *TheNativeSession = nullptr;
   std::unique_ptr<llvm::pdb::IPDBSession> Session;
   std::optional<llvm::codeview::GUID> ExpectedGUID;
-  const AddressWhitelist *FunctionWhitelist = nullptr;
+  std::optional<std::map<uint64_t, LDDTree::Symbol>> WhitelistByAddress;
 
 public:
   PDBImporter(TupleTree<model::Binary> &Model,
               const MetaAddress &ImageBase,
-              const std::optional<AddressWhitelist> &FunctionWhitelist);
+              std::optional<std::map<uint64_t, LDDTree::Symbol>> Whitelist);
 
   PDBImporter(TupleTree<model::Binary> &Model,
-              const std::optional<AddressWhitelist> &FunctionWhitelist) :
+              std::optional<std::map<uint64_t, LDDTree::Symbol>> Whitelist) :
     PDBImporter(Model,
                 MetaAddress::fromGeneric(Model->Architecture(), 0),
-                FunctionWhitelist) {}
+                std::move(Whitelist)) {}
 
   TupleTree<model::Binary> &getModel() { return Binary; }
   const MetaAddress &getBaseAddress() { return ImageBase; }
@@ -57,9 +55,9 @@ public:
   bool loadDataFromPDB(llvm::StringRef PDBFileName);
 
   bool isFunctionAllowed(uint64_t Address) const {
-    if (FunctionWhitelist == nullptr)
+    if (not WhitelistByAddress.has_value())
       return true;
 
-    return FunctionWhitelist->contains(Address);
+    return WhitelistByAddress->contains(Address);
   }
 };
