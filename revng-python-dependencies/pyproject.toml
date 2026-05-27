@@ -50,6 +50,7 @@ dependencies = [
     "starlette[full]>=0.52.1",
     "psycopg[c,pool]>=3.3.3,<4.0",
     "hypercorn>=0.18.0,<1.0",
+    "uvloop",
 
     "python-idb",
 

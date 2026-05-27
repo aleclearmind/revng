@@ -1138,7 +1138,10 @@ bool ArithmeticToGEPPass::runOnFunction(llvm::Function &F) {
   {
     GEPRewriter Rewriter(F);
 
-    std::set<const LocalValue<>> Replaced;
+    // libc++21 rejects std::allocator<const T> (used internally by
+    // std::set), and the `const` qualifier on a set key is redundant
+    // since keys are already immutable. Drop it.
+    std::set<LocalValue<>> Replaced;
     for (const LocalValue<> &PointerValue : Pointers) {
 
       // This can happen because a likely pointer may also be an obvious
