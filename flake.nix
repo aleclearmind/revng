@@ -533,6 +533,11 @@
               ninja -v -k0 all || true
             test -d share/revng/test/tests/well-known-models \
               || { echo "well-known-models not built"; exit 1; }
+            # Copy the built test artifacts into $out so downstream
+            # derivations (test/revng) can consume them. The build
+            # graph put them under share/ relative to the build dir.
+            mkdir -p "$out/share"
+            cp -a share/revng "$out/share/"
             rm -rf "$XDG_CACHE_HOME"
           '';
 
@@ -788,8 +793,10 @@
             llvm_21
             lld_21
             ninja
+            xorg.lndir
           ]) ++ [
             self.packages.${system}.revng
+            self.packages.${system}."test/revng-qa"
             (python.withPackages (
               ps: with ps; [
                 jinja2
@@ -804,14 +811,34 @@
 
           installPhase = ''
             mkdir -p $out
+            # test-configure resolves source paths against a single
+            # --install-path, but the sources/built binaries it asks
+            # for live in three separate components — revng, revng-qa
+            # and the pre-built test/revng-qa artifacts. Orchestra
+            # collapses them into ORCHESTRA_ROOT; under nix we stitch
+            # them together in a merged tree via lndir.
+            mkdir merged-root
+            lndir -silent \
+              ${self.packages.${system}.revng-qa} merged-root
+            lndir -silent \
+              ${self.packages.${system}."test/revng-qa"} merged-root
+            lndir -silent \
+              ${self.packages.${system}.revng} merged-root
             python3 \
               ${self.packages.${system}.revng-qa}/libexec/revng/test-configure \
               "${self.packages.${system}.revng-qa}/share/revng/test/configuration/revng-qa/"*.yml \
               "${self.packages.${system}.revng}/share/revng/test/configuration/revng/"*.yml \
-              --install-path "${self.packages.${system}.revng}" \
+              --install-path "$PWD/merged-root" \
               --destination . \
               --target-type 'revng\..*'
             export REVNG_OPTIONS="--debug-log=verify"
+            # PYPELINE_STORAGE_PROVIDER is needed by the new pypeline
+            # tests on develop.
+            export PYPELINE_STORAGE_PROVIDER="local://?inline"
+            # revng2 link-for-translation invokes raw ld.bfd with
+            # -l:crt1.o, -l:crtbegin.o, etc. Tell the linker where
+            # those come from (the host gcc + glibc).
+            export LIBRARY_PATH="${pkgs.glibc}/lib:${pkgs.stdenv.cc.cc.lib}/lib/gcc/x86_64-unknown-linux-gnu/${pkgs.stdenv.cc.cc.version}"
             grep -v 'shell =' build.ninja > build2.ninja
             mv build2.ninja build.ninja
             ln -s `command -v bash` sh
