@@ -816,6 +816,7 @@
             llvm_21
             lld_21
             ninja
+            nodejs
             xorg.lndir
           ]) ++ [
             self.packages.${system}.revng
@@ -850,6 +851,17 @@
               ${self.packages.${system}."test/revng-qa"} merged-root
             lndir -silent \
               ${self.packages.${system}.revng} merged-root
+            # Tests like revng.model-migration `cp` model.yml into a tmpdir
+            # and write back. cp preserves the source mode (read-only in the
+            # nix store), so the copy is also read-only and revng2 fails with
+            # EACCES. Replace symlinks under share/revng/test/tests with real
+            # writable copies.
+            find merged-root/share/revng/test/tests -type l | while IFS= read -r l; do
+              t=$(readlink -f "$l") || continue
+              rm "$l"
+              cp "$t" "$l"
+              chmod u+w "$l"
+            done
             python3 \
               ${self.packages.${system}.revng-qa}/libexec/revng/test-configure \
               "${self.packages.${system}.revng-qa}/share/revng/test/configuration/revng-qa/"*.yml \
