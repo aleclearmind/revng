@@ -753,6 +753,28 @@
             "-DQEMU_HELPERS_DIR=${self.packages.${system}.qemuHelpers}"
             "-DTEST_REVNG_QA_DIR=${self.packages.${system}."test/revng-qa"}"
             "-DTARGET_CLANG=${self.packages.${system}.revngClang}/bin/clang"
+            # revng's LinkForTranslation calls bare ld.bfd to relink
+            # translated binaries; install a configuration.yml that
+            # tells it where the host crt files (crt1.o, crti.o,
+            # crtbegin.o, crtend.o, crtn.o) live.
+            "-DREVNG_SYSTEM_CONFIG=${pkgs.writeText "revng.yml" ''
+              translation-ldflags:
+              - -L${pkgs.glibc}/lib
+              - -L${pkgs.gcc-unwrapped}/lib/gcc/x86_64-unknown-linux-gnu/${pkgs.gcc-unwrapped.version}
+              - -L${pkgs.gcc-unwrapped.lib}/lib
+              - -L${pkgs.libunwind}/lib
+              - -L${pkgs.glib.out}/lib
+              # libstdc++ pulls in _Unwind_RaiseException from
+              # libgcc_s, but revng's LinkForTranslation passes
+              # `-lgcc` (the static archive), not `-lgcc_s`. ld.bfd
+              # defaults to --no-copy-dt-needed-entries, so it
+              # refuses to resolve symbols through implicit DSO
+              # deps. Allow that.
+              - --copy-dt-needed-entries
+              # qemu's syscall.c references g_memdup (glib);
+              # add libglib so ld.bfd can resolve it.
+              - -lglib-2.0
+            ''}"
           ];
 
           doCheck = true;
