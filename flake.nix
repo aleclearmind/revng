@@ -894,10 +894,11 @@
             # take >1h each on certain inputs (e.g. s390x calc
             # through `project init`). Cap them with a per-step
             # timeout so the build can enumerate failing targets
-            # in bounded time.
+            # in bounded time. 600s lets arm/s390x recompile-
+            # isolated finish without prematurely killing them.
             sed -i \
-              -e 's| revng2 | timeout 120 revng2 |g' \
-              -e 's| revng artifact| timeout 120 revng artifact|g' \
+              -e 's| revng2 | timeout 600 revng2 |g' \
+              -e 's| revng artifact| timeout 600 revng artifact|g' \
               build.ninja
             ln -s `command -v bash` sh
             export XDG_CACHE_HOME="$PWD/.cache"
