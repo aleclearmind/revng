@@ -812,6 +812,7 @@
           nativeBuildInputs = (with pkgs; [
             gcc
             binutils
+            jq
             llvm_21
             lld_21
             ninja
@@ -819,6 +820,9 @@
           ]) ++ [
             self.packages.${system}.revng
             self.packages.${system}."test/revng-qa"
+            # revngPythonDependencies brings yq + jq runtime that
+            # several test-* rules depend on.
+            self.packages.${system}.revngPythonDependencies
             (python.withPackages (
               ps: with ps; [
                 jinja2
@@ -853,6 +857,11 @@
               --install-path "$PWD/merged-root" \
               --destination . \
               --target-type 'revng\..*'
+            # test-configure writes inline scripts (filter.py etc.)
+            # to the build dir with `#!/usr/bin/env python3` shebangs.
+            # The nix sandbox has no /usr/bin/env, so patch them to
+            # point at our concrete interpreters.
+            patchShebangs --build .
             export REVNG_OPTIONS="--debug-log=verify"
             # PYPELINE_STORAGE_PROVIDER is needed by the new pypeline
             # tests on develop.
