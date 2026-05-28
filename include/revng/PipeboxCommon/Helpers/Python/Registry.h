@@ -42,6 +42,6 @@ public:
   }
 };
 
-inline RegistryImpl Registry;
+[[gnu::visibility("default")]] inline RegistryImpl Registry;
 
 } // namespace revng::pypeline::helpers::python

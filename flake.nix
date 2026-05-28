@@ -764,6 +764,7 @@
               - -L${pkgs.gcc-unwrapped.lib}/lib
               - -L${pkgs.libunwind}/lib
               - -L${pkgs.glib.out}/lib
+              - -L${pkgs.zlib}/lib
               # libstdc++ pulls in _Unwind_RaiseException from
               # libgcc_s, but revng's LinkForTranslation passes
               # `-lgcc` (the static archive), not `-lgcc_s`. ld.bfd
@@ -817,6 +818,7 @@
             lld_21
             ninja
             nodejs
+            qemu
             xorg.lndir
           ]) ++ [
             self.packages.${system}.revng

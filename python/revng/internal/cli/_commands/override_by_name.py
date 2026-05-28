@@ -91,7 +91,7 @@ class ModelOverrideByName(Command):
                         continue
                     if base_function["Name"] == function_name:
                         function_to_override["Entry"] = base_function["Entry"]
-                        function_to_override["Name"] = base_function["Name"]
+                        function_to_override["Name"] = function_name
 
             self.log("Saving patched override file")
             patched_file.write("---\n")

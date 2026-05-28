@@ -32,6 +32,6 @@ public:
   RegistryImpl &operator=(const RegistryImpl &&) = delete;
 };
 
-inline RegistryImpl Registry;
+[[gnu::visibility("default")]] inline RegistryImpl Registry;
 
 } // namespace revng::pypeline::helpers::native
