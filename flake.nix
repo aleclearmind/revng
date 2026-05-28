@@ -866,6 +866,10 @@
             # PYPELINE_STORAGE_PROVIDER is needed by the new pypeline
             # tests on develop.
             export PYPELINE_STORAGE_PROVIDER="local://?inline"
+            # Several tests shell out to plain `python3` and
+            # `import revng.*`; expose revng's installed site-
+            # packages on PYTHONPATH.
+            export PYTHONPATH="${self.packages.${system}.revng}/${python.sitePackages}:${self.packages.${system}.revngPythonDependencies}/${python.sitePackages}''${PYTHONPATH:+:$PYTHONPATH}"
             # revng2 link-for-translation invokes raw ld.bfd with
             # -l:crt1.o, -l:crtbegin.o, etc. Tell the linker where
             # those come from (the host gcc + glibc).
