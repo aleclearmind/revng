@@ -990,6 +990,91 @@
             '';
           };
 
+        # mkRootfsModels: drives `revng analyze import-binary` over every
+        # ELF in a rootfs, with the rootfs's symbols-cache pre-seeded into
+        # revng's XDG cache and a per-rootfs configuration.yml pointing
+        # revng at the rootfs so its DwarfImporter can chase .gnu_debuglink
+        # / build-id references back to debug-info files.
+        mkRootfsModels =
+          {
+            name,
+            architecture,
+            rootfs,
+            debugInfo,
+          }:
+          stdenv.mkDerivation {
+            name = "rootfs-${name}-models";
+            unpackPhase = "true";
+            nativeBuildInputs = [
+              self.packages.${system}.revng
+              pkgs.ninja
+              rootfs
+              debugInfo
+            ];
+            buildPhase = ''
+              SOURCE_DIR="${rootfs}/share/roots/linux/${name}"
+              export XDG_CACHE_HOME="$PWD/cache"
+              mkdir -p "$XDG_CACHE_HOME/revng/debug-symbols/elf"
+              if [ -d "${debugInfo}/share/roots/linux/${name}/symbols-cache" ]; then
+                cp -a "${debugInfo}/share/roots/linux/${name}/symbols-cache"/* \
+                  "$XDG_CACHE_HOME/revng/debug-symbols/elf/" || true
+              fi
+
+              export XDG_CONFIG_HOME="$PWD/config"
+              mkdir -p "$XDG_CONFIG_HOME/revng"
+              cat > "$XDG_CONFIG_HOME/revng/configuration.yml" <<EOF
+              rootfs:
+                ${name}:
+                  path: $SOURCE_DIR
+                  architecture: ${architecture}
+                  operating-system: Linux
+              EOF
+
+              OUTPUT_DIR="$PWD/models"
+              cat > build.ninja <<EOF
+              rule import
+                command = REVNG_NO_FETCH_DEBUG_INFO=1 revng analyze import-binary \$in -o \$out
+                description = Importing \$in
+              EOF
+
+              # Mirrors orchestra's MAX_BINARIES knob (configured to 10).
+              # Setting to 0 imports every ELF; 10 is the debug-friendly
+              # cap orchestra ships and keeps each rootfs model build at
+              # a few minutes instead of a few hours.
+              MAX_BINARIES=10
+              find "$SOURCE_DIR" \
+                -not -path "$SOURCE_DIR/symbols-cache/*" \
+                -not -path "*/debug/.build-id/*" \
+                -not -path "*/lib/debug/*" \
+                -not -name "*.debug" \
+                -type f > all-files.list
+              COUNT=0
+              while IFS= read -r ELF; do
+                if head -c 4 "$ELF" 2>/dev/null | grep -q $'\x7fELF'; then
+                  COUNT=$((COUNT + 1))
+                  if [ "$MAX_BINARIES" -gt 0 ] && [ "$COUNT" -gt "$MAX_BINARIES" ]; then
+                    break
+                  fi
+                  REL="''${ELF#$SOURCE_DIR/}"
+                  OUT="$OUTPUT_DIR/$REL.yml"
+                  mkdir -p "$(dirname "$OUT")"
+                  ESC=$(sed 's| |$ |g' <<< "$ELF")
+                  echo "build $OUT: import $ESC" >> build.ninja
+                fi
+              done < all-files.list
+
+              ninja -v -k0 || true
+            '';
+            installPhase = ''
+              if [ -d models ]; then
+                mkdir -p "$out/share/roots/linux/${name}"
+                cd models && find . -name "*.yml" -exec install -Dm644 {} "$out/share/roots/linux/${name}/{}" \;
+              else
+                mkdir -p "$out/share/roots/linux/${name}"
+              fi
+            '';
+          };
+
         # The 9 Linux rootfs configurations orchestra builds. Each is a
         # fixed-output derivation: the outputHash is populated after the
         # first successful build (debootstrap is non-deterministic over
@@ -1113,6 +1198,61 @@
           outputHash = "sha256-ftYboAIXtLV7KduuPtf3TvI99PbTbaYvk2GEmt6s8NI=";
         };
 
+        "rootfs/ubuntu-20-04-x86-64/models" = self.packages.${system}.mkRootfsModels {
+          name = "ubuntu-20-04-x86-64";
+          architecture = "x86_64";
+          rootfs = self.packages.${system}."rootfs/ubuntu-20-04-x86-64";
+          debugInfo = self.packages.${system}."rootfs/ubuntu-20-04-x86-64/debug-info";
+        };
+        "rootfs/ubuntu-22-04-x86-64/models" = self.packages.${system}.mkRootfsModels {
+          name = "ubuntu-22-04-x86-64";
+          architecture = "x86_64";
+          rootfs = self.packages.${system}."rootfs/ubuntu-22-04-x86-64";
+          debugInfo = self.packages.${system}."rootfs/ubuntu-22-04-x86-64/debug-info";
+        };
+        "rootfs/ubuntu-24-04-x86-64/models" = self.packages.${system}.mkRootfsModels {
+          name = "ubuntu-24-04-x86-64";
+          architecture = "x86_64";
+          rootfs = self.packages.${system}."rootfs/ubuntu-24-04-x86-64";
+          debugInfo = self.packages.${system}."rootfs/ubuntu-24-04-x86-64/debug-info";
+        };
+        "rootfs/ubuntu-24-04-i386/models" = self.packages.${system}.mkRootfsModels {
+          name = "ubuntu-24-04-i386";
+          architecture = "x86";
+          rootfs = self.packages.${system}."rootfs/ubuntu-24-04-i386";
+          debugInfo = self.packages.${system}."rootfs/ubuntu-24-04-i386/debug-info";
+        };
+        "rootfs/ubuntu-24-04-arm/models" = self.packages.${system}.mkRootfsModels {
+          name = "ubuntu-24-04-arm";
+          architecture = "arm";
+          rootfs = self.packages.${system}."rootfs/ubuntu-24-04-arm";
+          debugInfo = self.packages.${system}."rootfs/ubuntu-24-04-arm/debug-info";
+        };
+        "rootfs/ubuntu-24-04-aarch64/models" = self.packages.${system}.mkRootfsModels {
+          name = "ubuntu-24-04-aarch64";
+          architecture = "aarch64";
+          rootfs = self.packages.${system}."rootfs/ubuntu-24-04-aarch64";
+          debugInfo = self.packages.${system}."rootfs/ubuntu-24-04-aarch64/debug-info";
+        };
+        "rootfs/ubuntu-24-04-s390x/models" = self.packages.${system}.mkRootfsModels {
+          name = "ubuntu-24-04-s390x";
+          architecture = "systemz";
+          rootfs = self.packages.${system}."rootfs/ubuntu-24-04-s390x";
+          debugInfo = self.packages.${system}."rootfs/ubuntu-24-04-s390x/debug-info";
+        };
+        "rootfs/debian-bookworm-mipsel/models" = self.packages.${system}.mkRootfsModels {
+          name = "debian-bookworm-mipsel";
+          architecture = "mipsel";
+          rootfs = self.packages.${system}."rootfs/debian-bookworm-mipsel";
+          debugInfo = self.packages.${system}."rootfs/debian-bookworm-mipsel/debug-info";
+        };
+        "rootfs/debian-buster-mips/models" = self.packages.${system}.mkRootfsModels {
+          name = "debian-buster-mips";
+          architecture = "mips";
+          rootfs = self.packages.${system}."rootfs/debian-buster-mips";
+          debugInfo = self.packages.${system}."rootfs/debian-buster-mips/debug-info";
+        };
+
         "rootfs/debian-buster-mips" = self.packages.${system}.mkRootfs {
           name = "debian-buster-mips";
           codename = "buster";
@@ -1196,6 +1336,58 @@
           archRspFlags = "--arch-rsp baseSettings.arm64.rsp --arch-rsp baseSettings.64.rsp";
         };
 
+        "win32metadata/pdbs/x86-64/models" = self.packages.${system}.mkModels {
+          name = "win32metadata-pdbs-x86-64-models";
+          revngBin = self.packages.${system}.revng;
+          buildInputs = [ self.packages.${system}."win32metadata/pdbs/x86-64" ];
+          installDest = "share/win32metadata/pdbs/x86-64";
+          importCommand = "revng model import debug-info";
+          findInputs = ''
+            PDB_DIR="${self.packages.${system}."win32metadata/pdbs/x86-64"}/share/win32metadata/pdbs/x86-64"
+            for PDB in "$PDB_DIR"/*.pdb; do
+              [ -f "$PDB" ] || continue
+              REL="$(basename "$PDB")"
+              OUTPUT="$OUTPUT_DIR/$REL.yml"
+              mkdir -p "$(dirname "$OUTPUT")"
+              echo "build $OUTPUT: import $PDB" >> build.ninja
+            done
+          '';
+        };
+        "win32metadata/pdbs/i386/models" = self.packages.${system}.mkModels {
+          name = "win32metadata-pdbs-i386-models";
+          revngBin = self.packages.${system}.revng;
+          buildInputs = [ self.packages.${system}."win32metadata/pdbs/i386" ];
+          installDest = "share/win32metadata/pdbs/i386";
+          importCommand = "revng model import debug-info";
+          findInputs = ''
+            PDB_DIR="${self.packages.${system}."win32metadata/pdbs/i386"}/share/win32metadata/pdbs/i386"
+            for PDB in "$PDB_DIR"/*.pdb; do
+              [ -f "$PDB" ] || continue
+              REL="$(basename "$PDB")"
+              OUTPUT="$OUTPUT_DIR/$REL.yml"
+              mkdir -p "$(dirname "$OUTPUT")"
+              echo "build $OUTPUT: import $PDB" >> build.ninja
+            done
+          '';
+        };
+        "win32metadata/pdbs/aarch64/models" = self.packages.${system}.mkModels {
+          name = "win32metadata-pdbs-aarch64-models";
+          revngBin = self.packages.${system}.revng;
+          buildInputs = [ self.packages.${system}."win32metadata/pdbs/aarch64" ];
+          installDest = "share/win32metadata/pdbs/aarch64";
+          importCommand = "revng model import debug-info";
+          findInputs = ''
+            PDB_DIR="${self.packages.${system}."win32metadata/pdbs/aarch64"}/share/win32metadata/pdbs/aarch64"
+            for PDB in "$PDB_DIR"/*.pdb; do
+              [ -f "$PDB" ] || continue
+              REL="$(basename "$PDB")"
+              OUTPUT="$OUTPUT_DIR/$REL.yml"
+              mkdir -p "$(dirname "$OUTPUT")"
+              echo "build $OUTPUT: import $PDB" >> build.ninja
+            done
+          '';
+        };
+
         # Helper used by every `*/models` derivation: walks a directory
         # tree, runs `revng analyze import-binary` (or `revng model
         # import debug-info` for PDBs) against every input file via a
@@ -1271,70 +1463,90 @@
         # Currently only well-known-models is consumed; rootfs/* and
         # win32metadata/pdbs/* models can be added once those layers
         # land — model-db will pick them up automatically.
-        model-db = stdenv.mkDerivation {
-          name = "model-db";
-          unpackPhase = "true";
-          nativeBuildInputs = [
-            self.packages.${system}.revng
-            self.packages.${system}."test/revng-qa/models"
-          ];
-          installPhase = ''
-            DB_NAME=prototypes.sqlite
-            rm -f "$DB_NAME"
-            export-to-db() {
-              local OS="$1" PLATFORM="$2" PREFIX="$3"
-              shift 3
-              revng model export sqlite \
-                --db "$DB_NAME" \
-                --platform "$PLATFORM" \
-                --operating-system "$OS" \
-                --prefix "$PREFIX" \
-                "$@"
-            }
+        model-db =
+          let
+            linuxRoots = [
+              "ubuntu-20-04-x86-64"
+              "ubuntu-22-04-x86-64"
+              "ubuntu-24-04-x86-64"
+              "ubuntu-24-04-i386"
+              "ubuntu-24-04-arm"
+              "ubuntu-24-04-aarch64"
+              "ubuntu-24-04-s390x"
+              "debian-bookworm-mipsel"
+              "debian-buster-mips"
+            ];
+            pdbArchs = [
+              "x86-64"
+              "i386"
+              "aarch64"
+            ];
+            linuxModels = map (n: {
+              name = n;
+              drv = self.packages.${system}."rootfs/${n}/models";
+            }) linuxRoots;
+            pdbModels = map (a: {
+              arch = a;
+              drv = self.packages.${system}."win32metadata/pdbs/${a}/models";
+            }) pdbArchs;
+          in
+          stdenv.mkDerivation {
+            name = "model-db";
+            unpackPhase = "true";
+            nativeBuildInputs =
+              [
+                self.packages.${system}.revng
+                self.packages.${system}."test/revng-qa/models"
+              ]
+              ++ (map (e: e.drv) linuxModels)
+              ++ (map (e: e.drv) pdbModels);
+            installPhase = ''
+              DB_NAME=prototypes.sqlite
+              rm -f "$DB_NAME"
+              export-to-db() {
+                local OS="$1" PLATFORM="$2" PREFIX="$3"
+                shift 3
+                revng model export sqlite \
+                  --db "$DB_NAME" \
+                  --platform "$PLATFORM" \
+                  --operating-system "$OS" \
+                  --prefix "$PREFIX" \
+                  "$@"
+              }
 
-            # Linux rootfs models (one DB row per rootfs).
-            LINUX_ROOTS_DIR="${self.packages.${system}.revng}/share/roots/linux"
-            if [ -d "$LINUX_ROOTS_DIR" ]; then
-              for ROOTFS_DIR in "$LINUX_ROOTS_DIR"/*; do
-                [ -d "$ROOTFS_DIR" ] || continue
-                ROOTFS_NAME="$(basename "$ROOTFS_DIR")"
-                MODELS="$(find "$ROOTFS_DIR" -name '*.yml' 2>/dev/null)"
-                [ -n "$MODELS" ] || continue
-                echo "Exporting models from $ROOTFS_NAME to DB" >&2
-                export-to-db Linux "$ROOTFS_NAME" "$ROOTFS_DIR" $MODELS
-              done
-            fi
+              ${pkgs.lib.concatMapStringsSep "\n" (e: ''
+                DIR="${e.drv}/share/roots/linux/${e.name}"
+                MODELS=$(find "$DIR" -name '*.yml' 2>/dev/null)
+                if [ -n "$MODELS" ]; then
+                  echo "Exporting models from ${e.name} to DB" >&2
+                  export-to-db Linux "${e.name}" "$DIR" $MODELS
+                fi
+              '') linuxModels}
 
-            # Windows PDB models.
-            PDB_DIR="${self.packages.${system}.revng}/share/win32metadata/pdbs"
-            if [ -d "$PDB_DIR" ]; then
-              for PDB_ARCH_DIR in "$PDB_DIR"/*; do
-                [ -d "$PDB_ARCH_DIR" ] || continue
-                ARCH="$(basename "$PDB_ARCH_DIR")"
-                MODELS="$(find "$PDB_ARCH_DIR" -name '*.yml' 2>/dev/null)"
-                [ -n "$MODELS" ] || continue
-                echo "Exporting PDB models for $ARCH to DB" >&2
-                export-to-db Windows "windows-$ARCH" "$PDB_ARCH_DIR" $MODELS
-              done
-            fi
+              ${pkgs.lib.concatMapStringsSep "\n" (e: ''
+                DIR="${e.drv}/share/win32metadata/pdbs/${e.arch}"
+                MODELS=$(find "$DIR" -name '*.yml' 2>/dev/null)
+                if [ -n "$MODELS" ]; then
+                  echo "Exporting PDB models for ${e.arch} to DB" >&2
+                  export-to-db Windows "windows-${e.arch}" "$DIR" $MODELS
+                fi
+              '') pdbModels}
 
-            # Well-known revng-qa models — one row per binary, platform
-            # extracted from the `libc-<name>-` segment of the basename.
-            WK="${self.packages.${system}."test/revng-qa/models"}/share/revng/test/tests/well-known-models"
-            if [ -d "$WK" ]; then
-              for MODEL in "$WK"/*.yml; do
-                [ -f "$MODEL" ] || continue
-                BASENAME="$(basename "$MODEL" .yml)"
-                PLATFORM="linux-$(echo "$BASENAME" | grep -oP 'libc-\K[^-]+' || echo unknown)"
-                echo "Exporting well-known model $BASENAME to DB" >&2
-                export-to-db Linux "$PLATFORM" "$WK" "$MODEL"
-              done
-            fi
+              WK="${self.packages.${system}."test/revng-qa/models"}/share/revng/test/tests/well-known-models"
+              if [ -d "$WK" ]; then
+                for MODEL in "$WK"/*.yml; do
+                  [ -f "$MODEL" ] || continue
+                  BASENAME="$(basename "$MODEL" .yml)"
+                  PLATFORM="linux-$(echo "$BASENAME" | grep -oP 'libc-\K[^-]+' || echo unknown)"
+                  echo "Exporting well-known model $BASENAME to DB" >&2
+                  export-to-db Linux "$PLATFORM" "$WK" "$MODEL"
+                done
+              fi
 
-            mkdir -p "$out/share/revng"
-            cp "$DB_NAME" "$out/share/revng/$DB_NAME"
-          '';
-        };
+              mkdir -p "$out/share/revng"
+              cp "$DB_NAME" "$out/share/revng/$DB_NAME"
+            '';
+          };
 
         "test/revng" = stdenv.mkDerivation {
           name = "test/revng";
