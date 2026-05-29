@@ -805,6 +805,305 @@
 
         };
 
+        # ---------------------------------------------------------------
+        # model-db tree (mirror of orchestra components: rootfs/*, win32-
+        # metadata, win32metadata/pdbs/*, test/revng-qa/models, model-db).
+        # ---------------------------------------------------------------
+
+        # Linux rootfs helper. Runs debootstrap --download-only inside a
+        # fixed-output derivation (network-allowed), extracts every .deb
+        # in place, then trims the result to ELF binaries + symlinks +
+        # ld.so.conf (orchestra-equivalent layout). The resulting tree
+        # lives under share/roots/linux/<name> so revng / fetch-debuginfo
+        # can find it the way it does in orchestra.
+        mkRootfs =
+          {
+            name,
+            codename,
+            architecture,
+            url,
+            operatingSystem,
+            packages_,
+            outputHash,
+          }:
+          let
+            components =
+              if operatingSystem == "ubuntu" then
+                "main,restricted,universe,multiverse"
+              else
+                "main,contrib,non-free";
+          in
+          stdenv.mkDerivation {
+            name = "rootfs-${name}";
+            outputHashAlgo = "sha256";
+            outputHashMode = "recursive";
+            inherit outputHash;
+            unpackPhase = "true";
+            nativeBuildInputs = with pkgs; [
+              debootstrap
+              fakeroot
+              dpkg
+              cacert
+            ];
+            buildPhase = ''
+              export SSL_CERT_FILE=${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt
+              fakeroot debootstrap \
+                --no-check-gpg \
+                --arch="${architecture}" \
+                --components="${components}" \
+                --include="${packages_}" \
+                --download-only \
+                "${codename}" \
+                rootfs/ \
+                "${url}" || true
+
+              # Extract every .deb in place.
+              find rootfs -name "*.deb" | while read DEB; do
+                mkdir -p temp && cd temp
+                ar x "../$DEB"
+                cd ../rootfs
+                if [ -e "../temp/data.tar"* ]; then
+                  tar --skip-old-files -xaf "../temp/data.tar"*
+                fi
+                cd .. && rm -rf temp
+              done
+
+              test "$(find rootfs/ -name 'libc.so*' | wc -l)" -ge 1 \
+                || { echo "debootstrap ${name} failed: no libc"; exit 1; }
+
+              # Trim non-ELF except for ld.so.conf{,.d/*} and symlinks.
+              find rootfs -not -type d | while read F; do
+                [ -L "$F" ] && continue
+                REL="''${F#rootfs}"
+                [ "$REL" = "/etc/ld.so.conf" ] && continue
+                case "$REL" in /etc/ld.so.conf.d/*) continue ;; esac
+                if head -c 4 "$F" 2>/dev/null | grep -q $'\x7fELF'; then continue; fi
+                rm -f "$F"
+              done
+
+              chmod -R u+rwX rootfs/
+
+              # Make absolute symlinks relative.
+              find rootfs -type l | while read L; do
+                T="$(readlink "$L")"
+                if [ "''${T#/}" != "$T" ]; then
+                  D="$(dirname "$L")"
+                  R="$(realpath -m --relative-to="$D" "rootfs$T")"
+                  ln -sfn "$R" "$L"
+                fi
+              done
+              find rootfs -type d -empty -delete
+            '';
+            installPhase = ''
+              mkdir -p "$out/share/roots/linux/${name}"
+              cp -a rootfs/* "$out/share/roots/linux/${name}/"
+              chmod -R u+rwX "$out/share/roots/linux/${name}/"
+            '';
+          };
+
+        # rootfs/X/debug-info wrapper: runs `revng model fetch-debuginfo`
+        # on every ELF in a rootfs and stuffs the resulting symbols cache
+        # under share/roots/linux/<name>/symbols-cache.
+        mkRootfsDebugInfo =
+          {
+            name,
+            rootfs,
+            outputHash,
+          }:
+          stdenv.mkDerivation {
+            name = "rootfs-${name}-debug-info";
+            outputHashAlgo = "sha256";
+            outputHashMode = "recursive";
+            inherit outputHash;
+            unpackPhase = "true";
+            nativeBuildInputs = [
+              self.packages.${system}.revng
+              rootfs
+              pkgs.ninja
+              pkgs.cacert
+            ];
+            buildPhase = ''
+              export SSL_CERT_FILE=${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt
+              ROOTFS_DIR="${rootfs}/share/roots/linux/${name}"
+              export XDG_CACHE_HOME="$PWD/cache"
+              mkdir -p "$XDG_CACHE_HOME" .flags
+              cat > build.ninja <<EOF
+              rule fetch_debuginfo
+                command = revng model fetch-debuginfo \$in || true && touch \$out
+                description = fetch-debuginfo \$in
+              EOF
+              find "$ROOTFS_DIR" -type f ! -path "$ROOTFS_DIR/symbols-cache/*" | \
+                while read -r ELF; do
+                  if head -c 4 "$ELF" 2>/dev/null | grep -q $'\x7fELF'; then
+                    HASH=$(sha256sum <<< "$ELF" | cut -d' ' -f1)
+                    ESC=$(sed -e 's| |$ |g' <<< "$ELF")
+                    echo "build .flags/$HASH: fetch_debuginfo $ESC" >> build.ninja
+                  fi
+                done
+              ninja -v
+            '';
+            installPhase = ''
+              SYMS_SRC="$PWD/cache/revng/debug-symbols/elf"
+              SYMS_DST="$out/share/roots/linux/${name}/symbols-cache"
+              if [ -d "$SYMS_SRC" ]; then
+                mkdir -p "$SYMS_DST"
+                cp -a "$SYMS_SRC"/* "$SYMS_DST/" || true
+              else
+                # Always produce an output so downstream paths exist.
+                mkdir -p "$SYMS_DST"
+              fi
+            '';
+          };
+
+        # Microsoft's win32metadata: the .winmd files we'll turn into PDBs
+        # later. Pinned to the same revision orchestra uses.
+        win32metadata = pkgs.fetchFromGitHub {
+          owner = "microsoft";
+          repo = "win32metadata";
+          rev = "223f4b9723d8fb7c83c286b6b4ad75dff18985c4";
+          hash = "sha256-4FamAMIy60d4gUbejX7O6TEyWwUevUtVMOC35e19zbk=";
+        };
+
+        # Helper used by every `*/models` derivation: walks a directory
+        # tree, runs `revng analyze import-binary` (or `revng model
+        # import debug-info` for PDBs) against every input file via a
+        # generated build.ninja, and installs the resulting `*.yml`
+        # files under installDest.
+        #
+        # `revngBin` is the absolute path of the revng package to use.
+        # `importCommand` is the import invocation (no trailing $in -o $out).
+        # `findInputs` is shell that emits absolute paths of inputs to import.
+        # `extraPreNinja` is run before ninja (e.g. to seed a revng cache).
+        # `installDest` is the directory under $out where *.yml files land.
+        mkModels =
+          {
+            name,
+            revngBin,
+            buildInputs ? [ ],
+            findInputs,
+            importCommand,
+            extraPreNinja ? "",
+            installDest,
+          }:
+          stdenv.mkDerivation {
+            inherit name;
+            unpackPhase = "true";
+            nativeBuildInputs = [
+              pkgs.ninja
+              revngBin
+            ] ++ buildInputs;
+            buildPhase = ''
+              mkdir -p $BUILD_DIR
+              cd $BUILD_DIR
+              OUTPUT_DIR="$PWD/models"
+              cat > build.ninja <<EOF
+              rule import
+                command = ${importCommand} \$in -o \$out
+                description = Importing \$in
+              EOF
+              ${findInputs}
+            '';
+            installPhase = ''
+              ${extraPreNinja}
+              ninja -v
+              mkdir -p "$out/${installDest}"
+              if [ -d models ]; then
+                cd models && find . -name "*.yml" -exec install -Dm644 {} "$out/${installDest}/{}" \;
+              fi
+            '';
+            BUILD_DIR = "build";
+          };
+
+        # well-known-models: import each compiled-with-debug-info
+        # binary shipped by test/revng-qa into a per-binary .yml model.
+        "test/revng-qa/models" = self.packages.${system}.mkModels {
+          name = "test-revng-qa-models";
+          revngBin = self.packages.${system}.revng;
+          buildInputs = [ self.packages.${system}."test/revng-qa" ];
+          installDest = "share/revng/test/tests/well-known-models";
+          findInputs = ''
+            WELL_KNOWN_DIR="${self.packages.${system}."test/revng-qa"}/share/revng/test/tests/well-known-models"
+            for BINARY in "$WELL_KNOWN_DIR/"*revng-qa.compiled-with-debug-info-*; do
+              case "$BINARY" in *.yml) continue ;; esac
+              BASENAME="$(basename "$BINARY")"
+              OUTPUT="$OUTPUT_DIR/''${BASENAME}.yml"
+              mkdir -p "$(dirname "$OUTPUT")"
+              echo "build $OUTPUT: import $BINARY" >> build.ninja
+            done
+          '';
+          importCommand = "REVNG_NO_FETCH_DEBUG_INFO=1 revng analyze import-binary";
+        };
+
+        # model-db: aggregate all available *.yml models into
+        # share/revng/prototypes.sqlite via `revng model export sqlite`.
+        # Currently only well-known-models is consumed; rootfs/* and
+        # win32metadata/pdbs/* models can be added once those layers
+        # land — model-db will pick them up automatically.
+        model-db = stdenv.mkDerivation {
+          name = "model-db";
+          unpackPhase = "true";
+          nativeBuildInputs = [
+            self.packages.${system}.revng
+            self.packages.${system}."test/revng-qa/models"
+          ];
+          installPhase = ''
+            DB_NAME=prototypes.sqlite
+            rm -f "$DB_NAME"
+            export-to-db() {
+              local OS="$1" PLATFORM="$2" PREFIX="$3"
+              shift 3
+              revng model export sqlite \
+                --db "$DB_NAME" \
+                --platform "$PLATFORM" \
+                --operating-system "$OS" \
+                --prefix "$PREFIX" \
+                "$@"
+            }
+
+            # Linux rootfs models (one DB row per rootfs).
+            LINUX_ROOTS_DIR="${self.packages.${system}.revng}/share/roots/linux"
+            if [ -d "$LINUX_ROOTS_DIR" ]; then
+              for ROOTFS_DIR in "$LINUX_ROOTS_DIR"/*; do
+                [ -d "$ROOTFS_DIR" ] || continue
+                ROOTFS_NAME="$(basename "$ROOTFS_DIR")"
+                MODELS="$(find "$ROOTFS_DIR" -name '*.yml' 2>/dev/null)"
+                [ -n "$MODELS" ] || continue
+                echo "Exporting models from $ROOTFS_NAME to DB" >&2
+                export-to-db Linux "$ROOTFS_NAME" "$ROOTFS_DIR" $MODELS
+              done
+            fi
+
+            # Windows PDB models.
+            PDB_DIR="${self.packages.${system}.revng}/share/win32metadata/pdbs"
+            if [ -d "$PDB_DIR" ]; then
+              for PDB_ARCH_DIR in "$PDB_DIR"/*; do
+                [ -d "$PDB_ARCH_DIR" ] || continue
+                ARCH="$(basename "$PDB_ARCH_DIR")"
+                MODELS="$(find "$PDB_ARCH_DIR" -name '*.yml' 2>/dev/null)"
+                [ -n "$MODELS" ] || continue
+                echo "Exporting PDB models for $ARCH to DB" >&2
+                export-to-db Windows "windows-$ARCH" "$PDB_ARCH_DIR" $MODELS
+              done
+            fi
+
+            # Well-known revng-qa models — one row per binary, platform
+            # extracted from the `libc-<name>-` segment of the basename.
+            WK="${self.packages.${system}."test/revng-qa/models"}/share/revng/test/tests/well-known-models"
+            if [ -d "$WK" ]; then
+              for MODEL in "$WK"/*.yml; do
+                [ -f "$MODEL" ] || continue
+                BASENAME="$(basename "$MODEL" .yml)"
+                PLATFORM="linux-$(echo "$BASENAME" | grep -oP 'libc-\K[^-]+' || echo unknown)"
+                echo "Exporting well-known model $BASENAME to DB" >&2
+                export-to-db Linux "$PLATFORM" "$WK" "$MODEL"
+              done
+            fi
+
+            mkdir -p "$out/share/revng"
+            cp "$DB_NAME" "$out/share/revng/$DB_NAME"
+          '';
+        };
+
         "test/revng" = stdenv.mkDerivation {
           name = "test/revng";
 
