@@ -1070,12 +1070,12 @@
         "rootfs/ubuntu-20-04-x86-64/debug-info" = self.packages.${system}.mkRootfsDebugInfo {
           name = "ubuntu-20-04-x86-64";
           rootfs = self.packages.${system}."rootfs/ubuntu-20-04-x86-64";
-          outputHash = pkgs.lib.fakeHash;
+          outputHash = "sha256-IoGG9TRLdC74lM6tAFAItimuUa2xCrfbvfzBT+1OPi0=";
         };
         "rootfs/ubuntu-22-04-x86-64/debug-info" = self.packages.${system}.mkRootfsDebugInfo {
           name = "ubuntu-22-04-x86-64";
           rootfs = self.packages.${system}."rootfs/ubuntu-22-04-x86-64";
-          outputHash = pkgs.lib.fakeHash;
+          outputHash = "sha256-+xhgcoOyRyz7fKiKu/XeSjc0jBsVSFdX7Y0bOEzPgF0=";
         };
         "rootfs/ubuntu-24-04-x86-64/debug-info" = self.packages.${system}.mkRootfsDebugInfo {
           name = "ubuntu-24-04-x86-64";
@@ -1085,32 +1085,32 @@
         "rootfs/ubuntu-24-04-i386/debug-info" = self.packages.${system}.mkRootfsDebugInfo {
           name = "ubuntu-24-04-i386";
           rootfs = self.packages.${system}."rootfs/ubuntu-24-04-i386";
-          outputHash = pkgs.lib.fakeHash;
+          outputHash = "sha256-JM+G59Co3lK3Hdhba2l3GlMEDjpB9+5ol+CKeMhy9qs=";
         };
         "rootfs/ubuntu-24-04-arm/debug-info" = self.packages.${system}.mkRootfsDebugInfo {
           name = "ubuntu-24-04-arm";
           rootfs = self.packages.${system}."rootfs/ubuntu-24-04-arm";
-          outputHash = pkgs.lib.fakeHash;
+          outputHash = "sha256-yE/h9EcAd80zsWn6j8ASn1I1YNHHB/meJfjssi+vMGE=";
         };
         "rootfs/ubuntu-24-04-aarch64/debug-info" = self.packages.${system}.mkRootfsDebugInfo {
           name = "ubuntu-24-04-aarch64";
           rootfs = self.packages.${system}."rootfs/ubuntu-24-04-aarch64";
-          outputHash = pkgs.lib.fakeHash;
+          outputHash = "sha256-zHhhil+y/R4x1mRtSez7PiUBwowBbDxljtNe7yCjRjc=";
         };
         "rootfs/ubuntu-24-04-s390x/debug-info" = self.packages.${system}.mkRootfsDebugInfo {
           name = "ubuntu-24-04-s390x";
           rootfs = self.packages.${system}."rootfs/ubuntu-24-04-s390x";
-          outputHash = pkgs.lib.fakeHash;
+          outputHash = "sha256-am9w70s8nzySduLsN/djEbV0QUeqk61Q2UzYqniUhK0=";
         };
         "rootfs/debian-bookworm-mipsel/debug-info" = self.packages.${system}.mkRootfsDebugInfo {
           name = "debian-bookworm-mipsel";
           rootfs = self.packages.${system}."rootfs/debian-bookworm-mipsel";
-          outputHash = pkgs.lib.fakeHash;
+          outputHash = "sha256-XiPB8RDdzI+SN+g/V5Imcul625ipfcZlZoBiikBk3tw=";
         };
         "rootfs/debian-buster-mips/debug-info" = self.packages.${system}.mkRootfsDebugInfo {
           name = "debian-buster-mips";
           rootfs = self.packages.${system}."rootfs/debian-buster-mips";
-          outputHash = pkgs.lib.fakeHash;
+          outputHash = "sha256-ftYboAIXtLV7KduuPtf3TvI99PbTbaYvk2GEmt6s8NI=";
         };
 
         "rootfs/debian-buster-mips" = self.packages.${system}.mkRootfs {
