@@ -255,6 +255,17 @@
           '';
         });
 
+      # MSVC toolchains: msvc.nix returns a list of derivations whose
+      # pname is the triple (e.g. "x86_64-winsdk-vc19"). Expose the
+      # three vc19 ones by triple so model-db's PDB layer can grab
+      # their VC include + Win SDK include directories.
+      msvcToolchains = (import ./msvc.nix) { pkgs = pkgs; };
+      msvcByTriple = pkgs.lib.listToAttrs (
+        builtins.map (drv: {
+          name = drv.pname;
+          value = drv;
+        }) msvcToolchains
+      );
     in
     {
       packages.${system} = {
@@ -1056,6 +1067,52 @@
           packages_ = "libfuse2,libc6-dbg";
           outputHash = "sha256-fRNsTOy8y/d2ZySfYbh6BDhxgCrx3rQ7Ed/WYBptg3o=";
         };
+        "rootfs/ubuntu-20-04-x86-64/debug-info" = self.packages.${system}.mkRootfsDebugInfo {
+          name = "ubuntu-20-04-x86-64";
+          rootfs = self.packages.${system}."rootfs/ubuntu-20-04-x86-64";
+          outputHash = pkgs.lib.fakeHash;
+        };
+        "rootfs/ubuntu-22-04-x86-64/debug-info" = self.packages.${system}.mkRootfsDebugInfo {
+          name = "ubuntu-22-04-x86-64";
+          rootfs = self.packages.${system}."rootfs/ubuntu-22-04-x86-64";
+          outputHash = pkgs.lib.fakeHash;
+        };
+        "rootfs/ubuntu-24-04-x86-64/debug-info" = self.packages.${system}.mkRootfsDebugInfo {
+          name = "ubuntu-24-04-x86-64";
+          rootfs = self.packages.${system}."rootfs/ubuntu-24-04-x86-64";
+          outputHash = "sha256-IzW2wUoYjhYtrQl/JsAfKE5e3rDQaW+WzzVW6nY7wf8=";
+        };
+        "rootfs/ubuntu-24-04-i386/debug-info" = self.packages.${system}.mkRootfsDebugInfo {
+          name = "ubuntu-24-04-i386";
+          rootfs = self.packages.${system}."rootfs/ubuntu-24-04-i386";
+          outputHash = pkgs.lib.fakeHash;
+        };
+        "rootfs/ubuntu-24-04-arm/debug-info" = self.packages.${system}.mkRootfsDebugInfo {
+          name = "ubuntu-24-04-arm";
+          rootfs = self.packages.${system}."rootfs/ubuntu-24-04-arm";
+          outputHash = pkgs.lib.fakeHash;
+        };
+        "rootfs/ubuntu-24-04-aarch64/debug-info" = self.packages.${system}.mkRootfsDebugInfo {
+          name = "ubuntu-24-04-aarch64";
+          rootfs = self.packages.${system}."rootfs/ubuntu-24-04-aarch64";
+          outputHash = pkgs.lib.fakeHash;
+        };
+        "rootfs/ubuntu-24-04-s390x/debug-info" = self.packages.${system}.mkRootfsDebugInfo {
+          name = "ubuntu-24-04-s390x";
+          rootfs = self.packages.${system}."rootfs/ubuntu-24-04-s390x";
+          outputHash = pkgs.lib.fakeHash;
+        };
+        "rootfs/debian-bookworm-mipsel/debug-info" = self.packages.${system}.mkRootfsDebugInfo {
+          name = "debian-bookworm-mipsel";
+          rootfs = self.packages.${system}."rootfs/debian-bookworm-mipsel";
+          outputHash = pkgs.lib.fakeHash;
+        };
+        "rootfs/debian-buster-mips/debug-info" = self.packages.${system}.mkRootfsDebugInfo {
+          name = "debian-buster-mips";
+          rootfs = self.packages.${system}."rootfs/debian-buster-mips";
+          outputHash = pkgs.lib.fakeHash;
+        };
+
         "rootfs/debian-buster-mips" = self.packages.${system}.mkRootfs {
           name = "debian-buster-mips";
           codename = "buster";
@@ -1073,6 +1130,70 @@
           repo = "win32metadata";
           rev = "223f4b9723d8fb7c83c286b6b4ad75dff18985c4";
           hash = "sha256-4FamAMIy60d4gUbejX7O6TEyWwUevUtVMOC35e19zbk=";
+        };
+
+        # mkPdbs: drives compile-to-pdb.py to produce a directory of
+        # *.pdb files from win32metadata for one target architecture.
+        # Uses the patched clang from our own `llvm` derivation plus
+        # the VC headers from the matching vc19 toolchain.
+        mkPdbs =
+          {
+            name,
+            targetTriple,
+            vcTriple,
+            archRspFlags,
+          }:
+          let
+            vcToolchain = msvcByTriple.${vcTriple};
+          in
+          stdenv.mkDerivation {
+            name = "win32metadata-pdbs-${name}";
+            unpackPhase = "true";
+            nativeBuildInputs = [
+              self.packages.${system}.llvm
+              pkgs.lld_21
+              pkgs.ninja
+              python
+              vcToolchain
+            ];
+            buildPhase = ''
+              mkdir build
+              python3 ${./compile-to-pdb.py} \
+                --win32meta-root ${self.packages.${system}.win32metadata} \
+                --clang ${self.packages.${system}.llvm}/bin/clang \
+                --lld-link ${pkgs.lld_21}/bin/lld-link \
+                --vc19-include ${vcToolchain}/lib/vc/${vcTriple}/VC/include \
+                --target-triple "${targetTriple}" \
+                ${archRspFlags} \
+                --output-dir build
+              cd build
+              ninja -j"$(nproc)"
+            '';
+            installPhase = ''
+              mkdir -p "$out/share/win32metadata/pdbs/${name}"
+              for PDB in build/*.pdb; do
+                [ -f "$PDB" ] && cp "$PDB" "$out/share/win32metadata/pdbs/${name}/"
+              done
+            '';
+          };
+
+        "win32metadata/pdbs/x86-64" = self.packages.${system}.mkPdbs {
+          name = "x86-64";
+          targetTriple = "x86_64-pc-windows-msvc";
+          vcTriple = "x86_64-winsdk-vc19";
+          archRspFlags = "--arch-rsp baseSettings.x64.rsp";
+        };
+        "win32metadata/pdbs/i386" = self.packages.${system}.mkPdbs {
+          name = "i386";
+          targetTriple = "i386-pc-windows-msvc";
+          vcTriple = "i386-winsdk-vc19";
+          archRspFlags = "--arch-rsp baseSettings.x86.rsp --arch-rsp baseSettings.32.rsp";
+        };
+        "win32metadata/pdbs/aarch64" = self.packages.${system}.mkPdbs {
+          name = "aarch64";
+          targetTriple = "aarch64-pc-windows-msvc";
+          vcTriple = "aarch64-winsdk-vc19";
+          archRspFlags = "--arch-rsp baseSettings.arm64.rsp --arch-rsp baseSettings.64.rsp";
         };
 
         # Helper used by every `*/models` derivation: walks a directory
