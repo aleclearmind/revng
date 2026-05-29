@@ -511,6 +511,10 @@
               --destination . \
               --target-type 'revng-qa\..*'
             export REVNG_OPTIONS="--debug-log=verify"
+            # WIP: orchestra's build.ninja references a top-level `shell`
+            # rule that resolves to ORCHESTRA_ROOT's shell wrapper; we
+            # don't have that wrapper, so strip the rule and provide a
+            # plain `sh` symlink instead.
             grep -v 'shell =' build.ninja > build2.ninja
             mv build2.ninja build.ninja
             ln -s `command -v bash` sh
@@ -539,6 +543,9 @@
             # Build with `-k0` and tolerate those specific failures, then
             # verify the artifacts revng actually consumes (the
             # well-known-models cross-compiled binaries) are present.
+            # WIP: -k0 + || true tolerates the IDA/Apple test failures
+            # noted above. Drop once revng-qa stops shipping those rules
+            # or once we provide idat64/an apple toolchain.
             NIX_CFLAGS_COMPILE="$NIX_CFLAGS_COMPILE -isystem$PWD/extra-includes" \
               NIX_CFLAGS_LINK= PATH="$PWD:$PATH" \
               ninja -v -k0 all || true
@@ -782,10 +789,11 @@
             "-DQEMU_HELPERS_DIR=${self.packages.${system}.qemuHelpers}"
             "-DTEST_REVNG_QA_DIR=${self.packages.${system}."test/revng-qa"}"
             "-DTARGET_CLANG=${self.packages.${system}.revngClang}/bin/clang"
-            # revng's LinkForTranslation calls bare ld.bfd to relink
-            # translated binaries; install a configuration.yml that
-            # tells it where the host crt files (crt1.o, crti.o,
-            # crtbegin.o, crtend.o, crtn.o) live.
+            # WIP: revng's LinkForTranslation calls bare `ld.bfd` with
+            # -l:crt1.o etc.; install a configuration.yml that tells it
+            # where the host crt files (crt1.o/crti.o/crtbegin.o/...)
+            # live. Drop once revng stops shelling out to ld directly
+            # (and instead uses cc with PATH/LIBRARY_PATH).
             "-DREVNG_SYSTEM_CONFIG=${pkgs.writeText "revng.yml" ''
               translation-ldflags:
               - -L${pkgs.glibc}/lib
@@ -1037,10 +1045,10 @@
                 description = Importing \$in
               EOF
 
-              # Mirrors orchestra's MAX_BINARIES knob (configured to 10).
-              # Setting to 0 imports every ELF; 10 is the debug-friendly
-              # cap orchestra ships and keeps each rootfs model build at
-              # a few minutes instead of a few hours.
+              # WIP: mirrors orchestra's MAX_BINARIES debug cap. 10 keeps
+              # each rootfs build at a few minutes. Set to 0 to import
+              # every ELF (multiple hours per rootfs, ~5 days for the
+              # whole tree).
               MAX_BINARIES=10
               find "$SOURCE_DIR" \
                 -not -path "$SOURCE_DIR/symbols-cache/*" \
@@ -1063,6 +1071,10 @@
                 fi
               done < all-files.list
 
+              # WIP: -k0 + || true tolerates upstream revng crashes that
+              # land per-binary (notably BinaryImporterHelper on Debian
+              # MIPS ELFs and PDBImporterImpl::populateTypes for some
+              # generated PDBs).
               ninja -v -k0 || true
             '';
             installPhase = ''
@@ -1430,6 +1442,8 @@
             '';
             installPhase = ''
               ${extraPreNinja}
+              # WIP: tolerate per-PDB upstream PDBImporterImpl crashes
+              # so the rest of the PDB models still land in $out.
               ninja -v -k0 || true
               mkdir -p "$out/${installDest}"
               if [ -d models ]; then
@@ -1597,11 +1611,13 @@
               ${self.packages.${system}."test/revng-qa"} merged-root
             lndir -silent \
               ${self.packages.${system}.revng} merged-root
-            # Tests like revng.model-migration `cp` model.yml into a tmpdir
-            # and write back. cp preserves the source mode (read-only in the
-            # nix store), so the copy is also read-only and revng2 fails with
-            # EACCES. Replace symlinks under share/revng/test/tests with real
-            # writable copies.
+            # WIP: tests like revng.model-migration `cp` model.yml
+            # into a tmpdir and write back; `cp` preserves the source
+            # mode (read-only in /nix/store) so the copy is also
+            # read-only and revng2 fails with EACCES. Replace symlinks
+            # under share/revng/test/tests with real writable copies.
+            # Drop once the affected tests stop copying-and-mutating
+            # in-place.
             find merged-root/share/revng/test/tests -type l | while IFS= read -r l; do
               t=$(readlink -f "$l") || continue
               rm "$l"
@@ -1615,32 +1631,37 @@
               --install-path "$PWD/merged-root" \
               --destination . \
               --target-type 'revng\..*'
-            # test-configure writes inline scripts (filter.py etc.)
-            # to the build dir with `#!/usr/bin/env python3` shebangs.
-            # The nix sandbox has no /usr/bin/env, so patch them to
-            # point at our concrete interpreters.
+            # WIP: test-configure writes inline scripts (filter.py
+            # etc.) with `#!/usr/bin/env python3` shebangs. The nix
+            # sandbox has no /usr/bin/env, so patchShebangs rewrites
+            # them to absolute paths. Drop if test-configure ever
+            # emits absolute shebangs itself.
             patchShebangs --build .
             export REVNG_OPTIONS="--debug-log=verify"
-            # PYPELINE_STORAGE_PROVIDER is needed by the new pypeline
-            # tests on develop.
+            # WIP: needed by the new pypeline tests on develop;
+            # should become the default once develop settles.
             export PYPELINE_STORAGE_PROVIDER="local://?inline"
-            # Several tests shell out to plain `python3` and
+            # WIP: several tests shell out to plain `python3` and
             # `import revng.*`; expose revng's installed site-
-            # packages on PYTHONPATH.
+            # packages on PYTHONPATH because nix doesn't auto-wrap
+            # subprocess invocations the way orchestra's environment
+            # script does.
             export PYTHONPATH="${self.packages.${system}.revng}/${python.sitePackages}:${self.packages.${system}.revngPythonDependencies}/${python.sitePackages}''${PYTHONPATH:+:$PYTHONPATH}"
-            # revng2 link-for-translation invokes raw ld.bfd with
-            # -l:crt1.o, -l:crtbegin.o, etc. Tell the linker where
-            # those come from (the host gcc + glibc).
+            # WIP: revng2 link-for-translation invokes raw ld.bfd
+            # with -l:crt1.o, -l:crtbegin.o, etc.; LIBRARY_PATH
+            # tells the linker where to find them. Drop once revng
+            # uses cc (which honors LIBRARY_PATH naturally) instead
+            # of bare ld.
             export LIBRARY_PATH="${pkgs.glibc}/lib:${pkgs.stdenv.cc.cc.lib}/lib/gcc/x86_64-unknown-linux-gnu/${pkgs.stdenv.cc.cc.version}"
+            # WIP: orchestra build.ninja references a top-level
+            # `shell` rule we don't have; strip it and provide a
+            # plain `sh` symlink in cwd.
             grep -v 'shell =' build.ninja > build2.ninja
             mv build2.ninja build.ninja
-            # Some revng2 / revng invocations on develop hang or
-            # take >1h each on certain inputs (e.g. s390x calc
-            # through `project init`). Cap them with a per-step
-            # timeout so the build can enumerate failing targets
-            # in bounded time. 1200s lets s390x recompile-
-            # isolated finish under -j8 contention without
-            # prematurely killing them.
+            # WIP: some revng2/revng invocations on develop hang
+            # (s390x project init, native-dynamic recompile-
+            # isolated). Cap each step at 1200s under -j8 so the
+            # build can enumerate failures rather than wedging.
             sed -i \
               -e 's| revng2 | timeout 1200 revng2 |g' \
               -e 's| revng artifact| timeout 1200 revng artifact|g' \
@@ -1649,10 +1670,9 @@
             export XDG_CACHE_HOME="$PWD/.cache"
             mkdir -p "$XDG_CACHE_HOME/.cache"
 
-            # Tolerate failing test targets — the bumped revng + new
-            # pypeline have several known issues we want to fix one-
-            # by-one. Capture the log to $out so the failing targets
-            # can be enumerated.
+            # WIP: tolerate failing test targets — bumped revng +
+            # new pypeline still have several upstream-known crashes.
+            # Capture the log so failing targets can be enumerated.
             mkdir -p "$out/log"
             ninja -v -k0 all 2>&1 | tee "$out/log/ninja.log" || true
 
@@ -1714,6 +1734,9 @@
               --destination . \
               --target-type 'revng-prss\..*'
 
+            # WIP: same patchShebangs / PYTHONPATH / PYPELINE_STORAGE_
+            # PROVIDER / `shell` strip / timeout / sh symlink dance as
+            # test/revng. See those comments for rationale.
             patchShebangs --build .
 
             export PYTHONPATH="${self.packages.${system}.revng}/${python.sitePackages}:${self.packages.${system}.revngPythonDependencies}/${python.sitePackages}''${PYTHONPATH:+:$PYTHONPATH}"
@@ -1722,9 +1745,6 @@
             grep -v 'shell =' build.ninja > build2.ninja
             mv build2.ninja build.ninja
 
-            # Cap individual steps at 600s — prss starts a postgres
-            # and rss-server, then exercises the daemon/CLI through
-            # revng2; 600s is generous for a single binary.
             sed -i \
               -e 's| revng2 | timeout 600 revng2 |g' \
               -e 's| revng artifact| timeout 600 revng artifact|g' \

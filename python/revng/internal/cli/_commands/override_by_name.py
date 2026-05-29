@@ -86,6 +86,10 @@ class ModelOverrideByName(Command):
                     self.log("A function is missing a name Name")
                     return 1
 
+                # WIP: develop's TupleTree serializer omits empty
+                # Name fields, so iterating Functions hits KeyError
+                # on `base_function["Name"]`. Use .get() until upstream
+                # serialization stops dropping the key.
                 for base_function in base_model["Functions"]:
                     if "Name" not in base_function:
                         continue

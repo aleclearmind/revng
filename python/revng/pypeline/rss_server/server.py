@@ -438,6 +438,8 @@ class RSSHTTPServer:
             key = (row.savepoint_id, row.container_id, row.configuration_hash)
             grouped[key].append(row.object_id)
 
+        # WIP: same psycopg/Python 3.14 bytes-vs-str mismatch as in
+        # post_hashmap_get_file — JSONResponse can't serialize bytes.
         def _str(v):
             return v.decode() if isinstance(v, bytes) else v
 
@@ -515,6 +517,9 @@ class RSSHTTPServer:
     async def post_hashmap_get_file(self, request: Request, storage: RSSLockedProjectStorage):
         hashes = await request.json()
         files = await storage.get_files(hashes)
+        # WIP: postgres TEXT columns return bytes under our current
+        # psycopg + Python 3.14 combo; coerce to str at the tarfile
+        # boundary because TarInfo.name must be str.
         return streaming_tar_response(
             files.items(),
             lambda e: e[0] if isinstance(e[0], str) else e[0].decode(),
