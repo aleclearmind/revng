@@ -1671,6 +1671,7 @@
 
           nativeBuildInputs =
             (with pkgs; [
+              jq
               ninja
               # tests/prss/common starts a local postgres + spawns
               # revng2's rss-server; we need both binaries on PATH

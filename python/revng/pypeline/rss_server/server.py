@@ -438,12 +438,15 @@ class RSSHTTPServer:
             key = (row.savepoint_id, row.container_id, row.configuration_hash)
             grouped[key].append(row.object_id)
 
+        def _str(v):
+            return v.decode() if isinstance(v, bytes) else v
+
         invalidated_response = [
             {
                 "savepoint_id": savepoint_id,
-                "container_id": container_id,
-                "configuration": configuration,
-                "object_ids": object_ids,
+                "container_id": _str(container_id),
+                "configuration": _str(configuration),
+                "object_ids": [_str(o) for o in object_ids],
             }
             for (savepoint_id, container_id, configuration), object_ids in grouped.items()
         ]
@@ -512,7 +515,11 @@ class RSSHTTPServer:
     async def post_hashmap_get_file(self, request: Request, storage: RSSLockedProjectStorage):
         hashes = await request.json()
         files = await storage.get_files(hashes)
-        return streaming_tar_response(files.items(), lambda e: e[0], lambda e: e[1])
+        return streaming_tar_response(
+            files.items(),
+            lambda e: e[0] if isinstance(e[0], str) else e[0].decode(),
+            lambda e: e[1],
+        )
 
     async def status(self, request: Request):
         return PlainTextResponse("OK")
