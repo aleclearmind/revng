@@ -604,7 +604,25 @@
         revng = stdenv.mkDerivation {
           name = "revng";
 
-          src = ./.;
+          # Filter the source so unrelated repo-level files (flake.nix,
+          # result symlink, dev junk) don't re-hash revng on every edit.
+          src = pkgs.lib.cleanSourceWith {
+            src = ./.;
+            filter =
+              path: type:
+              let
+                base = baseNameOf path;
+              in
+              !(
+                base == "flake.nix"
+                || base == "flake.lock"
+                || base == "result"
+                || base == "TODO"
+                || pkgs.lib.hasSuffix ".iso" base
+                || pkgs.lib.hasSuffix ".iso.1" base
+                || base == ".claude"
+              );
+          };
 
           nativeBuildInputs = with pkgs; [
             self.packages.${system}.revngPythonDependencies
@@ -839,11 +857,17 @@
             outputHashMode = "recursive";
             inherit outputHash;
             unpackPhase = "true";
+            # The trimmed rootfs intentionally retains symlinks whose
+            # targets were removed (non-ELF binaries got deleted).
+            dontCheckForBrokenSymlinks = true;
             nativeBuildInputs = with pkgs; [
               debootstrap
               fakeroot
               dpkg
               cacert
+              zstd
+              xz
+              gzip
             ];
             buildPhase = ''
               export SSL_CERT_FILE=${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt
@@ -954,6 +978,93 @@
               fi
             '';
           };
+
+        # The 9 Linux rootfs configurations orchestra builds. Each is a
+        # fixed-output derivation: the outputHash is populated after the
+        # first successful build (debootstrap is non-deterministic over
+        # time, but a single .deb set hashed once stays valid until the
+        # mirror moves).
+        "rootfs/ubuntu-20-04-x86-64" = self.packages.${system}.mkRootfs {
+          name = "ubuntu-20-04-x86-64";
+          codename = "focal";
+          architecture = "amd64";
+          url = "http://archive.ubuntu.com/ubuntu/";
+          operatingSystem = "ubuntu";
+          packages_ = "libfuse2,libc6-dbg";
+          outputHash = "sha256-aVeiMLIDfBrA8cTrdTm/VH9DNfCZt2fDA0E+wzjrVkE=";
+        };
+        "rootfs/ubuntu-22-04-x86-64" = self.packages.${system}.mkRootfs {
+          name = "ubuntu-22-04-x86-64";
+          codename = "jammy";
+          architecture = "amd64";
+          url = "http://archive.ubuntu.com/ubuntu/";
+          operatingSystem = "ubuntu";
+          packages_ = "libfuse2,libc6-dbg";
+          outputHash = "sha256-FODGTaDHNdovdCnTuRnd4Z+mxntUHbgJp5K0LWinFxM=";
+        };
+        "rootfs/ubuntu-24-04-x86-64" = self.packages.${system}.mkRootfs {
+          name = "ubuntu-24-04-x86-64";
+          codename = "noble";
+          architecture = "amd64";
+          url = "http://archive.ubuntu.com/ubuntu/";
+          operatingSystem = "ubuntu";
+          packages_ = "libfuse3-3,libc6-dbg";
+          outputHash = "sha256-cgng+8fusATdWBiaToQvAzb1iwYfM4I4V8Ol8Tnt3xw=";
+        };
+        "rootfs/ubuntu-24-04-i386" = self.packages.${system}.mkRootfs {
+          name = "ubuntu-24-04-i386";
+          codename = "noble";
+          architecture = "i386";
+          url = "http://archive.ubuntu.com/ubuntu/";
+          operatingSystem = "ubuntu";
+          packages_ = "libfuse3-3,libc6-dbg";
+          outputHash = "sha256-HTKCrHIyaOh2RUm8boHw6FE0/QZOO5e1OF2ga5jGk3I=";
+        };
+        "rootfs/ubuntu-24-04-arm" = self.packages.${system}.mkRootfs {
+          name = "ubuntu-24-04-arm";
+          codename = "noble";
+          architecture = "armhf";
+          url = "http://ports.ubuntu.com/ubuntu-ports/";
+          operatingSystem = "ubuntu";
+          packages_ = "libfuse3-3,libc6-dbg";
+          outputHash = "sha256-9lnZXji215GkDSld20frHTKCcs4JjTnR5Qo+ojYhY34=";
+        };
+        "rootfs/ubuntu-24-04-aarch64" = self.packages.${system}.mkRootfs {
+          name = "ubuntu-24-04-aarch64";
+          codename = "noble";
+          architecture = "arm64";
+          url = "http://ports.ubuntu.com/ubuntu-ports/";
+          operatingSystem = "ubuntu";
+          packages_ = "libfuse3-3,libc6-dbg";
+          outputHash = "sha256-aqXwLdZaIy8k1vng+CJZDuqIWAT/ZgYTDhfdVV02qaU=";
+        };
+        "rootfs/ubuntu-24-04-s390x" = self.packages.${system}.mkRootfs {
+          name = "ubuntu-24-04-s390x";
+          codename = "noble";
+          architecture = "s390x";
+          url = "http://ports.ubuntu.com/ubuntu-ports/";
+          operatingSystem = "ubuntu";
+          packages_ = "libfuse3-3,libc6-dbg";
+          outputHash = "sha256-B1EUfnGgjjvrgczKWkEB6x7hVuMfF0fxvdaNOyTw54k=";
+        };
+        "rootfs/debian-bookworm-mipsel" = self.packages.${system}.mkRootfs {
+          name = "debian-bookworm-mipsel";
+          codename = "bookworm";
+          architecture = "mipsel";
+          url = "https://ftp.debian.org/debian/";
+          operatingSystem = "debian";
+          packages_ = "libfuse2,libc6-dbg";
+          outputHash = "sha256-fRNsTOy8y/d2ZySfYbh6BDhxgCrx3rQ7Ed/WYBptg3o=";
+        };
+        "rootfs/debian-buster-mips" = self.packages.${system}.mkRootfs {
+          name = "debian-buster-mips";
+          codename = "buster";
+          architecture = "mips";
+          url = "https://archive.debian.org/debian/";
+          operatingSystem = "debian";
+          packages_ = "libfuse2,libc6-dbg";
+          outputHash = "sha256-YWE1mOQ/JEbkEXDybD7WI9TGaz+158BpcN4Qd7lxFe8=";
+        };
 
         # Microsoft's win32metadata: the .winmd files we'll turn into PDBs
         # later. Pinned to the same revision orchestra uses.
