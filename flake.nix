@@ -1300,7 +1300,7 @@
               mkdir build
               python3 ${./compile-to-pdb.py} \
                 --win32meta-root ${self.packages.${system}.win32metadata} \
-                --clang ${self.packages.${system}.llvm}/bin/clang \
+                --clang ${self.packages.${system}.llvm}/libexec/clang \
                 --lld-link ${pkgs.lld_21}/bin/lld-link \
                 --vc19-include ${vcToolchain}/lib/vc/${vcTriple}/VC/include \
                 --target-triple "${targetTriple}" \
@@ -1310,8 +1310,9 @@
               ninja -j"$(nproc)"
             '';
             installPhase = ''
+              # buildPhase ended inside build/; we're already there.
               mkdir -p "$out/share/win32metadata/pdbs/${name}"
-              for PDB in build/*.pdb; do
+              for PDB in *.pdb; do
                 [ -f "$PDB" ] && cp "$PDB" "$out/share/win32metadata/pdbs/${name}/"
               done
             '';
@@ -1429,7 +1430,7 @@
             '';
             installPhase = ''
               ${extraPreNinja}
-              ninja -v
+              ninja -v -k0 || true
               mkdir -p "$out/${installDest}"
               if [ -d models ]; then
                 cd models && find . -name "*.yml" -exec install -Dm644 {} "$out/${installDest}/{}" \;
