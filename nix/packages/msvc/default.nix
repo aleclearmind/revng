@@ -4,6 +4,7 @@
   pkgs,
 }:
 let
+  lib = pkgs.lib;
   getVS17Files =
     {
       selected,
@@ -413,8 +414,7 @@ let
         "windows-sdk/Lib/${sdkVersion}/ucrt/${targetPath}"
       ];
     };
-in
-[
+  toolchains = [
   # cl.exe version 12.00.8168
   # link.exe version 6.00.8168
   # Visual C++ from Visual Studio 6 (1998)
@@ -564,4 +564,9 @@ in
   (msvcPackager (vs17Configuration "x86_64" vs17Files))
   # 32-bit host, 64-bit ARM target
   (msvcPackager (vs17Configuration "aarch64" vs17Files))
-]
+  ];
+in
+{
+  inherit toolchains;
+  byTriple = lib.listToAttrs (map (drv: { name = drv.pname; value = drv; }) toolchains);
+}
