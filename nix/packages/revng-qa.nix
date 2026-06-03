@@ -1,4 +1,4 @@
-{ pkgs, stdenv, python, crossToolchains, msvc }:
+{ pkgs, stdenv, python, crossToolchains, msvc, orchestraNinja }:
 let
   revng-qa = stdenv.mkDerivation {
     name = "revng-qa";
@@ -46,7 +46,7 @@ let
       ++ msvc.toolchains
       ++ [
         revng-qa
-        ninja
+        orchestraNinja
         (python.withPackages (
           ps: with ps; [
             jinja2
@@ -70,13 +70,10 @@ let
         --destination . \
         --target-type 'revng-qa\..*'
       export REVNG_OPTIONS="--debug-log=verify"
-      # WIP: orchestra's build.ninja references a top-level `shell`
-      # rule that resolves to ORCHESTRA_ROOT's shell wrapper; we
-      # don't have that wrapper, so strip the rule and provide a
-      # plain `sh` symlink instead.
-      grep -v 'shell =' build.ninja > build2.ninja
-      mv build2.ninja build.ninja
-      ln -s `command -v bash` sh
+      # test-configure emits `shell = /bin/bash` on every rule; that
+      # path doesn't exist inside the nix sandbox. Point ninja at
+      # the bash we actually have.
+      sed -i "s|shell = /bin/bash|shell = ${pkgs.bash}/bin/bash|g" build.ninja
       # revng-qa develop tags native tests with the `native` tag,
       # which invokes plain `gcc` (no triple prefix). orchestra's
       # host gcc is musl-based, so static linking works; under nix
