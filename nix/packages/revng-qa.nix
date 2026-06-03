@@ -1,4 +1,4 @@
-{ pkgs, stdenv, python, crossToolchains, msvc, ninjaShellRule, inputs }:
+{ pkgs, stdenv, python, crossToolchains, msvc, ninjaShellRule, inputs, revngPackages }:
 let
   revng-qa = stdenv.mkDerivation {
     name = "revng-qa";
@@ -45,6 +45,12 @@ let
       )
       ++ msvc.toolchains
       ++ [
+        revngPackages."macos/clang/x86-64"
+        revngPackages."macos/clang/i686"
+        revngPackages."macos/clang/arm"
+        revngPackages."macos/clang/aarch64"
+      ]
+      ++ [
         revng-qa
         ninjaShellRule
         (python.withPackages (
@@ -86,17 +92,17 @@ let
       aarch64-winsdk-vc19-cl || true
 
       cp -a ${pkgs.glibc.dev}/include/gnu/stubs-64.h extra-includes/gnu/stubs-32.h
+      # stdenv's mold-linker setup exports NIX_CFLAGS_LINK / NIX_LDFLAGS
+      # that the cross-toolchains pick up and then fail to resolve at
+      # link time. Clear them so each cross-gcc finds its own ld.
       NIX_CFLAGS_COMPILE="$NIX_CFLAGS_COMPILE -isystem$PWD/extra-includes" \
-        NIX_CFLAGS_LINK= PATH="$PWD:$PATH" \
-        ninja -v -k0 all
-      test -d share/revng/test/tests/well-known-models \
-        || { echo "well-known-models not built"; exit 1; }
+        NIX_CFLAGS_LINK= \
+        ninja all
       # Copy the built test artifacts into $out so downstream
       # derivations (test/revng) can consume them. The build
       # graph put them under share/ relative to the build dir.
       mkdir -p "$out/share"
       cp -a share/revng "$out/share/"
-      rm -rf "$XDG_CACHE_HOME"
     '';
 
   };

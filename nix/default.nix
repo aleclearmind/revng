@@ -44,6 +44,16 @@ let
       inherit (revngQaPkgs) revng-qa;
       "test/revng-qa" = revngQaPkgs."test/revng-qa";
       revng-qa-idb = sp.callPackage ./packages/revng-qa-idb.nix { };
+      "macos/sdk" = sp.callPackage ./packages/macos/sdk.nix { };
+      "macos/libtapi" = sp.callPackage ./packages/macos/libtapi.nix { };
+      "macos/ld64/x86-64" = (sp.callPackage ./packages/macos/ld64.nix { })."x86-64";
+      "macos/ld64/i686" = (sp.callPackage ./packages/macos/ld64.nix { }).i686;
+      "macos/ld64/arm" = (sp.callPackage ./packages/macos/ld64.nix { }).arm;
+      "macos/ld64/aarch64" = (sp.callPackage ./packages/macos/ld64.nix { }).aarch64;
+      "macos/clang/x86-64" = (sp.callPackage ./packages/macos/clang.nix { })."x86-64";
+      "macos/clang/i686" = (sp.callPackage ./packages/macos/clang.nix { }).i686;
+      "macos/clang/arm" = (sp.callPackage ./packages/macos/clang.nix { }).arm;
+      "macos/clang/aarch64" = (sp.callPackage ./packages/macos/clang.nix { }).aarch64;
       revng = sp.callPackage ./packages/revng.nix { };
       inherit (modelsPkgs) mkModels;
       "test/revng-qa/models" = sp.callPackage ./packages/test-revng-qa-models.nix { };
