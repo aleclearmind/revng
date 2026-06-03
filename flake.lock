@@ -89,12 +89,26 @@
         "type": "github"
       }
     },
+    "revng-qa": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1780492114,
+        "narHash": "sha256-J5dt/+j8gSqgseAmPDE8TYSMv2axuFDmSK573DofDyA=",
+        "path": "/home/nix/revng-qa",
+        "type": "path"
+      },
+      "original": {
+        "path": "/home/nix/revng-qa",
+        "type": "path"
+      }
+    },
     "root": {
       "inputs": {
         "nixpkgs": "nixpkgs",
         "nixpkgs-2505": "nixpkgs-2505",
         "pyproject-build-systems": "pyproject-build-systems",
         "pyproject-nix": "pyproject-nix",
+        "revng-qa": "revng-qa",
         "uv2nix": "uv2nix",
         "uv2nix_hammer_overrides": "uv2nix_hammer_overrides"
       }

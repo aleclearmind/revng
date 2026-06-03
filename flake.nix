@@ -27,6 +27,10 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
+    # WIP: local revng-qa source — iterating on test-configuration
+    # *.yml files. Switch back to a github: URL once upstreamed.
+    revng-qa.url = "path:/home/nix/revng-qa";
+    revng-qa.flake = false;
   };
 
   outputs =

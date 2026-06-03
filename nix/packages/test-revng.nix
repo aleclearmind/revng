@@ -39,9 +39,8 @@ stdenv.mkDerivation {
     # test-configure resolves source paths against a single
     # --install-path, but the sources/built binaries it asks
     # for live in three separate components — revng, revng-qa
-    # and the pre-built test/revng-qa artifacts. Orchestra
-    # collapses them into ORCHESTRA_ROOT; under nix we stitch
-    # them together in a merged tree via lndir.
+    # and the pre-built test/revng-qa artifacts. Stitch them
+    # together in a merged tree via lndir.
     mkdir merged-root
     lndir -silent \
       ${revngPackages.revng-qa} merged-root
@@ -82,7 +81,7 @@ stdenv.mkDerivation {
     # WIP: several tests shell out to plain `python3` and
     # `import revng.*`; expose revng's installed site-
     # packages on PYTHONPATH because nix doesn't auto-wrap
-    # subprocess invocations the way orchestra's environment
+    # subprocess invocations the way the local environment
     # script does.
     export PYTHONPATH="${revng}/${python.sitePackages}:${revngPythonDependencies}/${python.sitePackages}''${PYTHONPATH:+:$PYTHONPATH}"
     # WIP: revng2 link-for-translation invokes raw ld.bfd
@@ -91,9 +90,9 @@ stdenv.mkDerivation {
     # uses cc (which honors LIBRARY_PATH naturally) instead
     # of bare ld.
     export LIBRARY_PATH="${pkgs.glibc}/lib:${pkgs.stdenv.cc.cc.lib}/lib/gcc/x86_64-unknown-linux-gnu/${pkgs.stdenv.cc.cc.version}"
-    # WIP: orchestra build.ninja references a top-level
-    # `shell` rule we don't have; strip it and provide a
-    # plain `sh` symlink in cwd.
+    # WIP: build.ninja references a top-level `shell` rule we
+    # don't have; strip it and provide a plain `sh` symlink in
+    # cwd.
     grep -v 'shell =' build.ninja > build2.ninja
     mv build2.ninja build.ninja
     # WIP: some revng2/revng invocations on develop hang

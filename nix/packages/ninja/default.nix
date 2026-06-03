@@ -1,8 +1,9 @@
 { pkgs }:
-# Orchestra's patched ninja: reserves `shell` as a rule binding so
-# build.ninja rules can dispatch to a custom wrapper shell. Pinned to
-# v1.11.0 — same as orchestra's ninja component — with the
-# shell-for-rule.patch applied.
+# Ninja pinned at v1.11.0 with the shell-for-rule.patch applied so
+# that build.ninja rules can carry a `shell = <path>` binding and
+# dispatch their command through that shell. revng-qa's
+# test-configure relies on this to wrap every rule in a sourced
+# common.sh.
 pkgs.ninja.overrideAttrs (oldAttrs: rec {
   version = "1.11.0";
   src = pkgs.fetchFromGitHub {
@@ -13,8 +14,8 @@ pkgs.ninja.overrideAttrs (oldAttrs: rec {
   };
   # shell-for-rule.patch is rebased on top of nixpkgs's
   # `0001-spawn-sh-instead-of-bin-sh.patch`: when no `shell = X`
-  # rule binding is set we use posix_spawnp("sh") so the sandbox's
-  # PATH-resolved sh wins (orchestra's original defaulted to
+  # binding is set we use posix_spawnp("sh") so the sandbox's
+  # PATH-resolved sh wins (the upstream patch defaulted to
   # `/bin/sh`, which doesn't exist inside the nix sandbox).
   patches = (oldAttrs.patches or [ ]) ++ [ ./shell-for-rule.patch ];
 })

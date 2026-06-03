@@ -32,7 +32,7 @@ dependencies = [
     # Applications/Script dependencies
     "ariadne[asgi-file-uploads]>=0.23.0,<0.29.0",
     "boto3<=1.35.99",
-    # cffi pinned higher than orchestra because <2.0 has no cp314 wheels.
+    # cffi >=2.0 — earlier versions have no cp314 wheels.
     "cffi>=2.0",
     "Jinja2",
     "gql[aiohttp]==3.5.2",

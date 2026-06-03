@@ -1,16 +1,16 @@
 { pkgs, stdenv, revng }:
 let
   # ---------------------------------------------------------------
-  # model-db tree (mirror of orchestra components: rootfs/*, win32-
-  # metadata, win32metadata/pdbs/*, test/revng-qa/models, model-db).
+  # model-db tree: rootfs/*, win32metadata, win32metadata/pdbs/*,
+  # test/revng-qa/models, model-db.
   # ---------------------------------------------------------------
 
   # Linux rootfs helper. Runs debootstrap --download-only inside a
   # fixed-output derivation (network-allowed), extracts every .deb
   # in place, then trims the result to ELF binaries + symlinks +
-  # ld.so.conf (orchestra-equivalent layout). The resulting tree
-  # lives under share/roots/linux/<name> so revng / fetch-debuginfo
-  # can find it the way it does in orchestra.
+  # ld.so.conf. The resulting tree lives under
+  # share/roots/linux/<name> where revng / fetch-debuginfo expect
+  # to find it.
   mkRootfs =
     {
       name,
@@ -203,10 +203,9 @@ let
           description = Importing \$in
         EOF
 
-        # WIP: mirrors orchestra's MAX_BINARIES debug cap. 10 keeps
-        # each rootfs build at a few minutes. Set to 0 to import
-        # every ELF (multiple hours per rootfs, ~5 days for the
-        # whole tree).
+        # WIP: cap each rootfs at 10 binaries to keep each build at
+        # a few minutes. Set to 0 to import every ELF (multiple
+        # hours per rootfs, ~5 days for the whole tree).
         MAX_BINARIES=10
         find "$SOURCE_DIR" \
           -not -path "$SOURCE_DIR/symbols-cache/*" \
@@ -245,7 +244,7 @@ let
       '';
     };
 
-  # The 9 Linux rootfs configurations orchestra builds. Each is a
+  # The 9 supported Linux rootfs configurations. Each is a
   # fixed-output derivation: the outputHash is populated after the
   # first successful build (debootstrap is non-deterministic over
   # time, but a single .deb set hashed once stays valid until the

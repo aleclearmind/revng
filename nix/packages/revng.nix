@@ -59,17 +59,16 @@ stdenv.mkDerivation {
   # `python_module(... MODULE_GENERATED_FILES ...)` hard-codes
   # the staging dir to ${CMAKE_BINARY_DIR}/python/, while all
   # the rules that actually produce those files stage them at
-  # ${CMAKE_BINARY_DIR}/${PYTHON_INSTALL_PATH}/. Under
-  # orchestra the two collapse (PYTHON_INSTALL_PATH is just
-  # "python"); on nix it's lib/python3.14/site-packages, so we
+  # ${CMAKE_BINARY_DIR}/${PYTHON_INSTALL_PATH}/. When
+  # PYTHON_INSTALL_PATH happens to be just "python" the two
+  # collapse; on nix it's lib/python3.14/site-packages, so we
   # rewrite the python_module hard-code to match.
   #
   # That alignment exposes a target-level cycle in develop:
   #   revng-all-binaries → install-all-wheels →
   #   install-revng-wheel → mixins.py → revng-all-binaries
-  # Cycle is intrinsic to develop; cmake 3.x apparently is
-  # lax enough about it to still generate (orchestra builds),
-  # but the bigger issue is just dropping the explicit
+  # Cycle is intrinsic to develop; cmake 3.x is lax enough about
+  # it to still generate, but dropping the explicit
   # `add_dependencies(revng-all-binaries install-all-wheels)`
   # removes the cycle without losing functionality (install-
   # all-wheels still has the `ALL` flag so it builds anyway).
@@ -77,12 +76,12 @@ stdenv.mkDerivation {
     patchShebangs --build .
 
     # python/CMakeLists.txt has a baked-in assumption that
-    # PYTHON_INSTALL_PATH == "python" (true for orchestra,
-    # where the custom python is built with purelib =
-    # $prefix/python). On nix purelib is the standard
-    # lib/python3.14/site-packages and a bunch of staging
-    # paths hard-coded to ''${CMAKE_BINARY_DIR}/python/ no
-    # longer line up with anything. Rewrite them to
+    # PYTHON_INSTALL_PATH == "python" (true when the custom
+    # python is built with purelib = $prefix/python). On nix
+    # purelib is the standard lib/python3.14/site-packages and
+    # a bunch of staging paths hard-coded to
+    # ''${CMAKE_BINARY_DIR}/python/ no longer line up with
+    # anything. Rewrite them to
     # ''${CMAKE_BINARY_DIR}/''${PYTHON_INSTALL_PATH}/ so they
     # match pip's --prefix install dir.
     find python lib include share -name CMakeLists.txt -o -name '*.cmake' \

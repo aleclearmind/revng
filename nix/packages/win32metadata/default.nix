@@ -1,7 +1,7 @@
 { pkgs, stdenv, python, llvm, msvc, revng, mkModels }:
 let
   # Microsoft's win32metadata: the .winmd files we'll turn into PDBs
-  # later. Pinned to the same revision orchestra uses.
+  # later.
   win32metadata = pkgs.fetchFromGitHub {
     owner = "microsoft";
     repo = "win32metadata";

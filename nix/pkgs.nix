@@ -37,7 +37,7 @@ let
     # overlays = [ ccacheOverlay ];
   };
 
-  # Match the Python version pinned by orchestra (3.14.x).
+  # Pin Python to 3.14.x.
   python = pkgs.python314;
 
   # Adopt:

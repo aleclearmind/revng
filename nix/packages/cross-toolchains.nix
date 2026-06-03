@@ -142,7 +142,7 @@ in
     "13"
   )
   # Build the cross-compilers with vendors nixpkgs knows (pc/unknown);
-  # the orchestra-flavored vendor names (gentoo/ibm/hardfloat) come in
+  # the vendor names revng-qa expects (gentoo/ibm/hardfloat) come in
   # as symlinks via `tripleAlias` below.
   (crossCompiler "armv7a-unknown-linux-uclibceabihf" "2.35"
     "sha256-fSRmD4cJNnBzjli8x7ewbxIcD8sMqPxENo1nWl75z/c="

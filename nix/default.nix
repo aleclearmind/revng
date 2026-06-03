@@ -40,9 +40,10 @@ let
       clangRelease = sp.callPackage ./packages/clang-release.nix { };
       inherit (qemuPkgs) qemu qemuHelpers;
       nanobind = sp.callPackage ./packages/nanobind.nix { };
-      orchestraNinja = sp.callPackage ./packages/ninja { };
+      ninjaShellRule = sp.callPackage ./packages/ninja { };
       inherit (revngQaPkgs) revng-qa;
       "test/revng-qa" = revngQaPkgs."test/revng-qa";
+      revng-qa-idb = sp.callPackage ./packages/revng-qa-idb.nix { };
       revng = sp.callPackage ./packages/revng.nix { };
       inherit (modelsPkgs) mkModels;
       "test/revng-qa/models" = sp.callPackage ./packages/test-revng-qa-models.nix { };
