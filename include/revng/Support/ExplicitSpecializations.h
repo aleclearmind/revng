@@ -8,11 +8,13 @@
 
 #include <vector>
 
+#if 0
 // Declare the existence of explicit template specializations of certain
 // functions that would be otherwise heavy on build times. Make sure this file
 // is included by a header that's included by all the translation units.
 
 extern template void std::vector<unsigned int>::__push_back_slow_path<
   const unsigned int &>(const unsigned int &);
+#endif
 
 #endif

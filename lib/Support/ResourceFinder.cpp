@@ -19,6 +19,10 @@ PathList ResourceFinder({
   INSTALL_PATH,
 #endif
 
+#ifdef LIBTCG_PATH
+  LIBTCG_PATH,
+#endif
+
 });
 
 std::string getComponentsHash() {

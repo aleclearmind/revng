@@ -48,15 +48,24 @@ using std::unique_ptr;
 using type_info = void;
 
 #pragma push_macro("_VSTD")
-
 #ifdef _VSTD
 #undef _VSTD
 #endif
 #define _VSTD std
+  
 #define __remove_cvref_t remove_cvref_t
 #define __throw_bad_any_cast abort
 #define __libcpp_unreachable abort
 #define _LIBCPP_HAS_NO_RTTI
+#define _LIBCPP_INLINE_VISIBILITY
+#define _LIBCPP_TEMPLATE_VIS
+#define _LIBCPP_AVAILABILITY_THROW_BAD_ANY_CAST
+
+#pragma push_macro("_LIBCPP_HIDE_FROM_ABI")
+#ifdef _LIBCPP_HIDE_FROM_ABI
+#undef _LIBCPP_HIDE_FROM_ABI
+#endif 
+#define _LIBCPP_HIDE_FROM_ABI
 
 template <class _Tp> struct __is_inplace_type_imp : false_type {};
 template <class _Tp> struct __is_inplace_type_imp<in_place_type_t<_Tp>> : true_type {};
@@ -690,6 +699,7 @@ template<typename Trait>
 using TraitfulAny = any<Trait>;
 
 #pragma pop_macro("_VSTD")
+#pragma pop_macro("_LIBCPP_HIDE_FROM_ABI")
 #undef __remove_cvref_t
 #undef __throw_bad_any_cast
 #undef __libcpp_unreachable

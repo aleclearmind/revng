@@ -1,0 +1,717 @@
+# TODO: try on macmini
+
+{
+  inputs = {
+    nixpkgs.url = "git+file:///home/nix/nixpkgs";
+
+    nixpkgs-2505.url = "https://github.com/NixOS/nixpkgs/archive/refs/heads/nixos-25.05-small.tar.gz";
+
+    pyproject-nix = {
+      url = "github:pyproject-nix/pyproject.nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+
+    uv2nix = {
+      url = "github:pyproject-nix/uv2nix";
+      inputs.pyproject-nix.follows = "pyproject-nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+
+    pyproject-build-systems = {
+      url = "github:pyproject-nix/build-system-pkgs";
+      inputs.pyproject-nix.follows = "pyproject-nix";
+      inputs.uv2nix.follows = "uv2nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+
+    uv2nix_hammer_overrides = {
+      url = "github:TyberiusPrime/uv2nix_hammer_overrides";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+
+  };
+
+  outputs =
+    {
+      self,
+      nixpkgs,
+      nixpkgs-2505,
+      poetry2nix,
+      uv2nix,
+      pyproject-nix,
+      pyproject-build-systems,
+      uv2nix_hammer_overrides,
+    }:
+    let
+      system = "x86_64-linux";
+      ccacheOverlay = (
+        self: super: {
+          ccacheWrapper = super.ccacheWrapper.override {
+            extraConfig = ''
+              export CCACHE_COMPRESS=1
+              export CCACHE_SLOPPINESS=random_seed
+              export CCACHE_DIR="/nix/var/cache/ccache"
+              export CCACHE_UMASK=007
+              if [ ! -d "$CCACHE_DIR" ]; then
+                echo "====="
+                echo "Directory '$CCACHE_DIR' does not exist"
+                echo "Please create it with:"
+                echo "  sudo mkdir -m0770 '$CCACHE_DIR'"
+                echo "  sudo chown root:nixbld '$CCACHE_DIR'"
+                echo "====="
+                exit 1
+              fi
+              if [ ! -w "$CCACHE_DIR" ]; then
+                echo "====="
+                echo "Directory '$CCACHE_DIR' is not accessible for user $(whoami)"
+                echo "Please verify its access permissions"
+                echo "====="
+                exit 1
+              fi
+            '';
+          };
+        }
+      );
+      pkgs = import nixpkgs {
+        inherit system;
+        # overlays = [ ccacheOverlay ];
+      };
+      pkgs-2505 = import nixpkgs-2505 {
+        inherit system;
+        # overlays = [ ccacheOverlay ];
+      };
+
+      # Match the Python version pinned by orchestra (3.14.x).
+      python = pkgs.python314;
+
+      # Adopt:
+      #
+      # * clang as a compiler
+      # * libc++ as C++ standard library
+      # * mold as linker
+      stdenv = (pkgs.useMoldLinker pkgs.llvmPackages_21.libcxxStdenv);
+      ccacheStdenv = stdenv;
+      # ccacheStdenv = pkgs.ccacheStdenv.override {
+      #   stdenv = stdenv;
+      #   extraConfig = ''
+      #     export CCACHE_DIR="''${CCACHE_DIR:-/nix/var/cache/ccache}"
+      #     export CCACHE_COMPRESS=1
+      #     export CCACHE_SLOPPINESS=random_seed
+      #     export CCACHE_UMASK=007
+      #   '';
+      # };
+
+      #
+      # Build C++ dependencies using our stdenv
+      #
+      boost-test =
+        (pkgs.lib.fix (
+          self:
+          pkgs.callPackage "${nixpkgs}/pkgs/development/libraries/boost/1.81.nix" {
+            stdenv = pkgs.llvmPackages_21.libcxxStdenv;
+
+            # Use the right version of boost-build.
+            # This has been copied from nixpkgs.
+            boost-build = pkgs.boost-build.override { useBoost = self; };
+          }
+        )).overrideAttrs
+          (oldAttrs: {
+            # Build only the libraries we're interseted in
+            configureFlags = oldAttrs.configureFlags ++ [ "--with-libraries=test" ];
+          });
+
+      aws-crt-cpp = (
+        pkgs.callPackage "${nixpkgs}/pkgs/by-name/aw/aws-crt-cpp/package.nix" {
+          stdenv = stdenv;
+        }
+      );
+
+      aws-sdk-cpp =
+        (pkgs.callPackage "${nixpkgs}/pkgs/by-name/aw/aws-sdk-cpp/package.nix" {
+          stdenv = stdenv;
+
+          aws-crt-cpp = aws-crt-cpp;
+
+          # Only build the APIs we're interested in
+          apis = [ "s3" ];
+        }).overrideAttrs
+          (oldAttrs: {
+            cmakeFlags = oldAttrs.cmakeFlags ++ [
+              "-DENABLE_TESTING=OFF"
+              "-DFORCE_CURL=ON"
+              "-DENABLE_UNITY_BUILD=OFF"
+              "-DENABLE_RTTI=OFF"
+              "-DCPP_STANDARD=20"
+            ];
+          });
+
+      makeQemu =
+        pkgs: llvmPackages: name: cflags: suffixes:
+        (llvmPackages.stdenv.mkDerivation {
+          name = name;
+
+          src = pkgs.fetchFromGitHub {
+            owner = "revng";
+            repo = "qemu";
+            rev = "a4c2561e7ed21b16dcbad730e0a64f0e0389b6ac";
+            hash = "sha256-i1fipbBHkgJ0wgOsM4L/oRK/LRYKc+HQWNWVZxcMk8U=";
+          };
+
+          postPatch = ''
+            patchShebangs python/scripts/link-embedded-objects
+
+            grep -vF "subdir('fp')" tests/meson.build > tests/meson.build2
+            mv tests/meson.build2 tests/meson.build
+
+            # WIP
+            grep -vF "_Static_assert" target/i386/cpu.h > target/i386/cpu.h2
+            mv target/i386/cpu.h2 target/i386/cpu.h
+
+            grep -vF "ASSERT_CONSTANT" libtcg/libtcg.c > libtcg/libtcg.c2
+            mv libtcg/libtcg.c2 libtcg/libtcg.c
+          '';
+
+          preBuild = ''
+            cd build
+          '';
+
+          nativeBuildInputs = (with pkgs; [
+            pkg-config
+            meson
+            ninja
+            coreutils-full
+            zlib
+            llvmPackages.clang
+            llvmPackages.llvm
+          ]) ++ [
+            (python.withPackages (python-pkgs: [ python-pkgs.distlib ]))
+            # Hooks from the python package are needed to add `$pythonPath` so
+            # `python/scripts/mkvenv.py` can detect `meson` otherwise the vendored meson without patches will be used.
+            python.pkgs.python
+          ];
+
+          buildInputs = with pkgs; [
+            glib
+          ];
+
+          dontUseMesonConfigure = true;
+          enableParallelBuilding = true;
+
+          configureFlags =
+            let
+              targets = builtins.concatStringsSep "," (
+                pkgs.lib.flatten (
+                  map (
+                    suffix:
+                    map (architecture: "${architecture}-${suffix}") [
+                      "arm"
+                      "aarch64"
+                      "i386"
+                      "mips"
+                      "mipsel"
+                      "s390x"
+                      "x86_64"
+                    ]
+                  ) suffixes
+                )
+              );
+            in
+            [
+              "--disable-plugins"
+              "--target-list=${targets}"
+              "--disable-werror"
+              "--disable-docs"
+              "--disable-kvm"
+              "--disable-tools"
+              "--disable-system"
+              "--disable-libnfs"
+              "--disable-vde"
+              "--disable-gnutls"
+              "--disable-cap-ng"
+              "--disable-pie"
+              "-Dvhost_user=disabled"
+              "-Dxkbcommon=disabled"
+              "--extra-cflags=-Wno-unused-variable"
+              "--extra-cflags=-Wno-unused-function"
+              "--extra-cflags=-Wno-unused-result"
+              "--extra-cflags=-Wno-unused-but-set-variable"
+              (map (argument: "--extra-cflags=${argument}") cflags)
+            ];
+
+          preInstall = ''
+            mkdir -p $out/include
+            mkdir -p $out/lib
+          '';
+
+          # The qemu develop branch dropped the glib entry from
+          # libtcg-*.so's RUNPATH; revng dlopens these at build time and
+          # the loader then can't find libglib-2.0.so.0. Add it back.
+          postFixup = ''
+            for so in $out/lib/libtcg-*.so; do
+              [ -f "$so" ] || continue
+              current=$(patchelf --print-rpath "$so" 2>/dev/null || true)
+              patchelf --set-rpath "${pkgs.glib.out}/lib''${current:+:$current}" "$so"
+            done
+          '';
+        });
+
+    in
+    {
+      packages.${system} = {
+        revngClang = pkgs-2505.clang_16;
+
+        revngPythonDependencies =
+          let
+            workspace = uv2nix.lib.workspace.loadWorkspace {
+              workspaceRoot = ./revng-python-dependencies;
+            };
+            pythonBase = pkgs.callPackage pyproject-nix.build.packages {
+              inherit python;
+            };
+            overlay = workspace.mkPyprojectOverlay {
+              sourcePreference = "wheel";
+            };
+            pythonSet = pythonBase.overrideScope (
+              pkgs.lib.composeManyExtensions [
+                pyproject-build-systems.overlays.wheel
+                overlay
+                (uv2nix_hammer_overrides.overrides pkgs)
+                # Overrides for our forks (uv2nix_hammer_overrides only
+                # covers upstream package names).
+                (
+                  final: prev:
+                  let
+                    addSetuptools = drv: drv.overrideAttrs (old: {
+                      nativeBuildInputs =
+                        (old.nativeBuildInputs or [ ]) ++ final.resolveBuildSystem { setuptools = [ ]; };
+                    });
+                  in
+                  {
+                    grandiso = addSetuptools prev.grandiso;
+                    python-idb = addSetuptools prev.python-idb;
+                    llvmcpy = addSetuptools prev.llvmcpy;
+                    # psycopg-c needs both setuptools (hammer covers psycopg
+                    # but not psycopg-c) and pg_config + libpq headers.
+                    psycopg-c = (addSetuptools prev.psycopg-c).overrideAttrs (old: {
+                      nativeBuildInputs = (old.nativeBuildInputs or [ ]) ++ [
+                        pkgs.libpq.pg_config
+                        pkgs.libpq
+                      ];
+                    });
+                  }
+                )
+              ]
+            );
+            venv = pythonSet.mkVirtualEnv "revng-python-dependencies" workspace.deps.default;
+          in
+          venv;
+
+        # Build our LLVM fork
+        llvm = ccacheStdenv.mkDerivation {
+          name = "llvm";
+
+          src = pkgs.fetchFromGitHub {
+            owner = "revng";
+            repo = "llvm-project";
+            rev = "092c88c578306e6aa96cf28f9f4c4c33065ccce7";
+            hash = "sha256-dvXiG/Qkng9y/RbRgBLeSlgz9v/WNy+9Rz+NMifxZ0U=";
+          };
+
+          nativeBuildInputs = (with pkgs; [
+            cmake
+            ninja
+            zlib
+            libedit
+          ]) ++ [ python ];
+
+          cmakeFlags = [
+            "-GNinja"
+
+            "-DCMAKE_C_FLAGS=-O2"
+            "-DCMAKE_CXX_FLAGS=-O2"
+            "-DCMAKE_BUILD_TYPE=Debug"
+
+            "-DCMAKE_INSTALL_BINDIR=libexec"
+
+            "-DLLVM_INSTALL_UTILS=ON"
+            "-DLLVM_ENABLE_DUMP=ON"
+            "-DLLVM_ENABLE_TERMINFO=OFF"
+            "-DCMAKE_CXX_STANDARD=20"
+            "-DLLVM_ENABLE_Z3_SOLVER=OFF"
+            "-DLLVM_ENABLE_ZLIB=ON"
+            "-DLLVM_ENABLE_LIBEDIT=ON"
+            "-DLLVM_ENABLE_LIBXML2=OFF"
+            "-DLLVM_ENABLE_ZSTD=OFF"
+
+            "-DBUILD_SHARED_LIBS=ON"
+            "-DLLVM_ENABLE_PROJECTS=clang;mlir"
+            "-DLLVM_TARGETS_TO_BUILD=AArch64;ARM;Mips;SystemZ;X86"
+            "-DCMAKE_CXX_FLAGS=-Wno-global-constructors"
+          ];
+
+          # sancov.cpp uses `{{ClIgnorelist}}` to build a vector<string>;
+          # the inner brace tries to copy-construct std::string from a
+          # cl::opt<std::string>, which fails under libc++21 because the
+          # templated basic_string(const _Tp&) ctor is now `explicit`.
+          # Force a direct-init conversion via static_cast.
+          postPatch = ''
+            sed -i 's|SpecialCaseList::createOrDie({{ClIgnorelist}},|SpecialCaseList::createOrDie({static_cast<std::string>(ClIgnorelist)},|' \
+              llvm/tools/sancov/sancov.cpp
+          '';
+
+          preConfigure = "cd llvm";
+
+        };
+
+        # Build clang to compile QEMU helpers
+        clangRelease = stdenv.mkDerivation {
+          name = "clang-release";
+
+          src = pkgs.fetchFromGitHub {
+            owner = "revng";
+            repo = "llvm-project";
+            rev = "e966bb52c876de8da25b301e960f886234c78007";
+            hash = "sha256-XSfCHg3SpCXq9dnJg/13Kl6kVnocVWA74iLQevu/u3A=";
+          };
+
+          nativeBuildInputs = (with pkgs; [
+            cmake
+            ninja
+          ]) ++ [ python ];
+
+          # compiler-rt's sanitizer_common pulls in <crypt.h>, which on
+          # Nix comes from libxcrypt.
+          buildInputs = [ pkgs.libxcrypt ];
+
+          cmakeFlags = [
+            "-GNinja"
+
+            "-DLLVM_INSTALL_UTILS=ON"
+            "-DLLVM_ENABLE_DUMP=ON"
+            "-DLLVM_ENABLE_TERMINFO=OFF"
+            "-DCMAKE_CXX_STANDARD=20"
+            "-DLLVM_ENABLE_Z3_SOLVER=OFF"
+            "-DLLVM_ENABLE_ZLIB=ON"
+            "-DLLVM_ENABLE_LIBEDIT=ON"
+            "-DLLVM_ENABLE_LIBXML2=OFF"
+            "-DLLVM_ENABLE_ZSTD=OFF"
+
+            "-DBUILD_SHARED_LIBS=ON"
+            "-DLLVM_ENABLE_PROJECTS=clang;compiler-rt;clang-tools-extra;lld"
+            "-DLLVM_TARGETS_TO_BUILD=X86"
+            "-DCOMPILER_RT_INCLUDE_TESTS=OFF"
+          ];
+
+          # Same libc++21 sancov.cpp issue as in the `llvm` derivation.
+          postPatch = ''
+            sed -i 's|SpecialCaseList::createOrDie({{ClIgnorelist}},|SpecialCaseList::createOrDie({static_cast<std::string>(ClIgnorelist)},|' \
+              llvm/tools/sancov/sancov.cpp
+          '';
+
+          preConfigure = "cd llvm";
+
+        };
+
+        # Build our fork of QEMU
+        qemu = makeQemu pkgs pkgs.llvmPackages_21 "qemu" [ "-fPIC" ] [ "linux-user" "libtcg" ];
+        qemuHelpers =
+          makeQemu pkgs-2505 pkgs-2505.llvmPackages_16 "qemu-helpers"
+            [
+              "-fPIC"
+              "-Wno-gcc-compat"
+              "-DGEN_LLVM_HELPERS"
+              "-O0"
+              "-Xclang"
+              "-disable-O0-optnone"
+              "-fembed-bitcode"
+            ]
+            [ "llvm-helpers" ];
+
+        revng-qa = stdenv.mkDerivation {
+          name = "revng-qa";
+
+          src = pkgs.fetchFromGitHub {
+            owner = "revng";
+            repo = "revng-qa";
+            rev = "4227ac818e370dbe28b0ef088af2fd733eab7bf8";
+            hash = "sha256-L5rWWoHoXr+EcMuchU/UWR8WdLcyGR6uZqROpKTyTsc=";
+          };
+
+          nativeBuildInputs = (with pkgs; [
+            cmake
+            ninja
+          ]) ++ [
+            (python.withPackages (
+              ps: with ps; [
+                jinja2
+                pyyaml
+              ]
+            ))
+          ];
+
+          cmakeFlags = [
+            "-GNinja"
+          ];
+
+        };
+
+        "test/revng-qa" = stdenv.mkDerivation {
+          name = "test/revng-qa";
+
+          unpackPhase = "true";
+
+          nativeBuildInputs =
+            with pkgs;
+            (
+              [
+                binutils
+                llvm_21
+                lld_21
+              ]
+              ++ (import ./crossShell.nix) {
+                inherit nixpkgs;
+                inherit system;
+              }
+            )
+            ++ ((import ./msvc.nix) { pkgs = pkgs; })
+            ++ [
+              self.packages.${system}.revng-qa
+              ninja
+              (python.withPackages (
+                ps: with ps; [
+                  jinja2
+                  pyyaml
+                ]
+              ))
+              # WIP: this should be pulled by MSVC dep
+              pkgs.samba
+            ];
+
+          buildPhase = ''
+            echo
+          '';
+
+          installPhase = ''
+            mkdir -p $out
+            python3 \
+              ${self.packages.${system}.revng-qa}/libexec/revng/test-configure \
+              "${self.packages.${system}.revng-qa}/share/revng/test/configuration/revng-qa/"*.yml \
+              --install-path "${self.packages.${system}.revng-qa}" \
+              --destination . \
+              --target-type 'revng-qa\..*'
+            export REVNG_OPTIONS="--debug-log=verify"
+            grep -v 'shell =' build.ninja > build2.ninja
+            mv build2.ninja build.ninja
+            ln -s `command -v bash` sh
+            # revng-qa develop tags native tests with the `native` tag,
+            # which invokes plain `gcc` (no triple prefix). orchestra's
+            # host gcc is musl-based, so static linking works; under nix
+            # the host gcc is glibc and lacks static libs. Point `gcc` at
+            # the x86_64 musl cross-compiler instead — it already lives
+            # in PATH thanks to crossShell.nix.
+            ln -s "$(command -v x86_64-unknown-linux-musl-gcc)" gcc
+            ln -s "$(command -v x86_64-unknown-linux-musl-g++)" g++
+            export XDG_CACHE_HOME="$PWD/.cache"
+            mkdir -p "$XDG_CACHE_HOME/.cache"
+            mkdir -p extra-includes/gnu
+
+            i386-winsdk-vc12-cl || true
+            i386-winsdk-vc13-cl || true
+            i386-winsdk-vc16-cl || true
+            i386-winsdk-vc19-cl || true
+            x86_64-winsdk-vc19-cl || true
+            aarch64-winsdk-vc19-cl || true
+
+            cp -a ${pkgs.glibc.dev}/include/gnu/stubs-64.h extra-includes/gnu/stubs-32.h
+            # revng-qa develop adds IDA-based (.idb) and apple-darwin11
+            # ABI tests; we don't ship idat64 or an apple toolchain.
+            # Build with `-k0` and tolerate those specific failures, then
+            # verify the artifacts revng actually consumes (the
+            # well-known-models cross-compiled binaries) are present.
+            NIX_CFLAGS_COMPILE="$NIX_CFLAGS_COMPILE -isystem$PWD/extra-includes" \
+              NIX_CFLAGS_LINK= PATH="$PWD:$PATH" \
+              ninja -v -k0 all || true
+            test -d share/revng/test/tests/well-known-models \
+              || { echo "well-known-models not built"; exit 1; }
+            rm -rf "$XDG_CACHE_HOME"
+          '';
+
+        };
+
+        nanobind = stdenv.mkDerivation {
+          name = "nanobind";
+
+          src = pkgs.fetchFromGitHub {
+            owner = "revng";
+            repo = "nanobind";
+            fetchSubmodules = true;
+            rev = "a111828dd36d1ce3c8443d2bfc74ac292169a0f3";
+            hash = "sha256-sxEehWW+NdoWl+EO/uZ1CzD39Fibsw/XomkUKrFDsQA=";
+          };
+
+          # standalone/CMakeLists.txt computes PYTHON_INSTALL_PATH as a path
+          # relative from $out to Python_SITELIB; in nix those live in
+          # different store paths, so the result escapes $out. Hard-code
+          # the install destination to live inside $out instead.
+          postPatch = ''
+            substituteInPlace standalone/CMakeLists.txt \
+              --replace 'DESTINATION "''${CMAKE_INSTALL_PREFIX}/''${PYTHON_INSTALL_PATH}/nanobind"' \
+                        'DESTINATION "''${CMAKE_INSTALL_PREFIX}/${python.sitePackages}/nanobind"'
+          '';
+
+          nativeBuildInputs = (with pkgs; [
+            cmake
+            ninja
+          ]) ++ [ python ];
+
+          preConfigure = "cd standalone";
+
+          cmakeFlags = [
+            "-GNinja"
+            "-DCMAKE_CXX_STANDARD=20"
+            "-DBUILD_SHARED_LIBS=ON"
+          ];
+
+        };
+
+        # Use a fake npm project to specify JavaScript dependencies
+        revngJavascriptDependencies = pkgs.stdenv.mkDerivation (finalAttrs: {
+          nativeBuildInputs = [
+            pkgs.nodejs
+            pkgs.pnpm.configHook
+          ];
+          pname = "revng";
+          version = "1.0";
+          src = ./revng-js-dependencies;
+          installPhase = ''
+            pwd
+            mkdir -p $out/node_modules
+            cp -Tar /build/revng-js-dependencies/node_modules $out/node_modules
+          '';
+          pnpmDeps = pkgs.pnpm.fetchDeps {
+            inherit (finalAttrs) pname version src;
+            fetcherVersion = 2;
+            hash = "sha256-VxFmVePLXkuBR1kaLj+djwdMqn2uh+m5YM0mSIfXOlo=";
+          };
+        });
+
+        # Build revng
+        revng = stdenv.mkDerivation {
+          name = "revng";
+
+          src = ./.;
+
+          nativeBuildInputs = with pkgs; [
+            self.packages.${system}.revngPythonDependencies
+            clang-tools
+            aws-sdk-cpp
+            boost-test
+            cmake
+            codespell
+            doxygen
+            git
+            libarchive
+            ninja
+            nodejs
+            zstd
+            self.packages.${system}.revngJavascriptDependencies
+            makeWrapper
+            self.packages.${system}.llvm
+            self.packages.${system}.qemu
+            self.packages.${system}.nanobind
+            zlib
+          ];
+
+          postPatch = ''patchShebangs --build .'';
+
+          # The pypeline-annotations-test cmake rule embeds the
+          # PYTHONPATH that's set at configure time (via $ENV{PYTHONPATH}
+          # in set_tests_properties), so we have to inject nanobind's
+          # site-packages here, not later in checkPhase.
+          preConfigure = ''
+            export PYTHONPATH="${self.packages.${system}.nanobind}/${python.sitePackages}''${PYTHONPATH:+:$PYTHONPATH}"
+          '';
+
+          cmakeFlags = [
+            "-GNinja"
+            "-DCMAKE_CXX_STANDARD=20"
+            "-DCMAKE_C_FLAGS=-O2"
+            "-DCMAKE_CXX_FLAGS=-O2"
+            "-DCMAKE_BUILD_TYPE=Debug"
+            "-DLLVM_DIR=${self.packages.${system}.llvm}/lib/cmake/llvm"
+            "-DLIBTCG_DIR=${self.packages.${system}.qemu}"
+            "-DQEMU_HELPERS_DIR=${self.packages.${system}.qemuHelpers}"
+            "-DTEST_REVNG_QA_DIR=${self.packages.${system}."test/revng-qa"}"
+            "-DTARGET_CLANG=${self.packages.${system}.revngClang}/bin/clang"
+          ];
+
+          doCheck = true;
+
+          checkPhase = ''
+            export PATH="${self.packages.${system}.llvm}/libexec:$PATH"
+            # pypeline-annotations-test runs nanobind_generate_stubs.py
+            # which `import nanobind`; nanobind isn't on PYTHONPATH by
+            # default during the build.
+            export PYTHONPATH="${self.packages.${system}.nanobind}/${python.sitePackages}:${self.packages.${system}.revngPythonDependencies}/${python.sitePackages}''${PYTHONPATH:+:$PYTHONPATH}"
+            ctest -j$(nproc)
+          '';
+
+          postFixup = ''
+            for PROGRAM in revng revng2 pype; do
+                wrapProgram $out/bin/"$PROGRAM" --prefix PYTHONPATH : "${
+                  self.packages.${system}.revngPythonDependencies
+                }/${python.sitePackages}"
+            done
+          '';
+
+        };
+
+        "test/revng" = stdenv.mkDerivation {
+          name = "test/revng";
+
+          unpackPhase = "true";
+
+          nativeBuildInputs = (with pkgs; [
+            gcc
+            binutils
+            llvm_21
+            lld_21
+            ninja
+          ]) ++ [
+            self.packages.${system}.revng
+            (python.withPackages (
+              ps: with ps; [
+                jinja2
+                pyyaml
+              ]
+            ))
+          ];
+
+          buildPhase = ''
+            echo
+          '';
+
+          installPhase = ''
+            mkdir -p $out
+            python3 \
+              ${self.packages.${system}.revng-qa}/libexec/revng/test-configure \
+              "${self.packages.${system}.revng-qa}/share/revng/test/configuration/revng-qa/"*.yml \
+              "${self.packages.${system}.revng}/share/revng/test/configuration/revng/"*.yml \
+              --install-path "${self.packages.${system}.revng}" \
+              --destination . \
+              --target-type 'revng\..*'
+            export REVNG_OPTIONS="--debug-log=verify"
+            grep -v 'shell =' build.ninja > build2.ninja
+            mv build2.ninja build.ninja
+            ln -s `command -v bash` sh
+            export XDG_CACHE_HOME="$PWD/.cache"
+            mkdir -p "$XDG_CACHE_HOME/.cache"
+
+            ninja -v -k0 all
+          '';
+
+        };
+
+      };
+    };
+}

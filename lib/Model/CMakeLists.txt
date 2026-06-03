@@ -25,6 +25,8 @@ set(SCHEMA_PATH "${CMAKE_SOURCE_DIR}/include/revng/Model/model-schema.yml")
 set(JSONSCHEMA_PATH "${CMAKE_BINARY_DIR}/model-jsonschema.yml")
 set(TYPESCRIPT_PATH "${CMAKE_BINARY_DIR}/lib/typescript/model.ts")
 set(DOCS_PATH "${CMAKE_BINARY_DIR}/share/doc/revng/references/model.md")
+configure_file("${CMAKE_SOURCE_DIR}/python/revng/model/mixins.py"
+               "${CMAKE_BINARY_DIR}/python/revng/model/mixins.py" COPYONLY)
 target_tuple_tree_generator(
   revngModel
   INSTALL
@@ -37,7 +39,7 @@ target_tuple_tree_generator(
   JSONSCHEMA_PATH
   "${JSONSCHEMA_PATH}"
   PYTHON_PATH
-  "${CMAKE_BINARY_DIR}/${PYTHON_INSTALL_PATH}/${PYTHON_GENERATED_MODEL_PATH}"
+  "${CMAKE_BINARY_DIR}/python/${PYTHON_GENERATED_MODEL_PATH}"
   TYPESCRIPT_PATH
   "${TYPESCRIPT_PATH}"
   TYPESCRIPT_INCLUDE

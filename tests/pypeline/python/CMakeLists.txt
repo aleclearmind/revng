@@ -18,7 +18,7 @@ revng_add_test(
 set_tests_properties(
   test_pypeline
   PROPERTIES LABELS "pypeline" ENVIRONMENT
-             "PYTHONPATH=${CMAKE_BINARY_DIR}/${PYTHON_INSTALL_PATH}")
+             "PYTHONPATH=${CMAKE_BINARY_DIR}/${PYTHON_INSTALL_PATH}:$ENV{PYTHONPATH}")
 
 revng_add_test(
   NAME
@@ -36,7 +36,7 @@ revng_add_test(
 set_tests_properties(
   test_pypeline_daemon
   PROPERTIES LABELS "pypeline" ENVIRONMENT
-             "PYTHONPATH=${CMAKE_BINARY_DIR}/${PYTHON_INSTALL_PATH}")
+             "PYTHONPATH=${CMAKE_BINARY_DIR}/${PYTHON_INSTALL_PATH}:$ENV{PYTHONPATH}")
 
 revng_add_test(
   NAME

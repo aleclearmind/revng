@@ -47,7 +47,7 @@ target_tuple_tree_generator(
   JSONSCHEMA_PATH
   "${PIPELINEDESCRIPTION_JSONSCHEMA_PATH}"
   PYTHON_PATH
-  "${CMAKE_BINARY_DIR}/${PYTHON_INSTALL_PATH}/revng/pipeline_description/_generated.py"
+  "${CMAKE_BINARY_DIR}/python/revng/pipeline_description/_generated.py"
   TYPESCRIPT_PATH
   "${PIPELINEDESCRIPTION_TYPESCRIPT_PATH}"
   GLOBAL_NAME

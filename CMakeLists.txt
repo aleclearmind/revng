@@ -6,6 +6,8 @@ cmake_minimum_required(VERSION 3.15.0)
 
 project(revng)
 
+set(CMAKE_INSTALL_RPATH "${CMAKE_INSTALL_PREFIX}/lib;${CMAKE_INSTALL_PREFIX}/lib/revng/analyses")
+
 include(share/revng/cmake/Common.cmake)
 
 find_program(CLANG_PATH NAMES clang)
@@ -27,6 +29,7 @@ include_directories("${CMAKE_SOURCE_DIR}/include")
 include_directories("${CMAKE_BINARY_DIR}/include")
 
 add_definitions("-DINSTALL_PATH=\"${CMAKE_INSTALL_PREFIX}\"")
+add_definitions("-DLIBTCG_PATH=\"${LIBTCG_DIR}\"")
 
 # Uncomment the following line if recursive coroutines make debugging hard
 # add_definitions("-DDISABLE_RECURSIVE_COROUTINES")
@@ -68,6 +71,8 @@ add_flag_if_available("-Wno-unused-variable")
 add_flag_if_available("-Wno-maybe-uninitialized")
 add_flag_if_available("-Wno-init-list-lifetime")
 add_flag_if_available("-Wno-ambiguous-reversed-operator")
+add_flag_if_available("-Wno-alias-template-in-declaration-name")
+add_flag_if_available("-Wno-unreachable-code-break")
 
 # Add some extra warnings
 add_flag_if_available("-Wstrict-aliasing")
@@ -79,7 +84,8 @@ add_flag_if_available("-Winconsistent-missing-destructor-override")
 add_flag_if_available("-Wnewline-eof")
 add_flag_if_available("-Wmissing-prototypes")
 add_flag_if_available("-Wimplicit-fallthrough")
-
+add_flag_if_available("-Wno-missing-designated-field-initializers")
+add_flag_if_available("-Wno-unused-but-set-variable")
 add_definitions("-D_FILE_OFFSET_BITS=64")
 
 check_cxx_compiler_flag("-no-pie" COMPILER_SUPPORTS_NO_PIE)
@@ -142,7 +148,7 @@ add_custom_command(
     > "${COMPONENT_HASH_PATH}")
 add_custom_target(generate-component-hash ALL DEPENDS "${COMPONENT_HASH_PATH}")
 install(FILES "${COMPONENT_HASH_PATH}"
-        DESTINATION "${CMAKE_INSTALL_DIR}/share/revng/component-hashes/")
+        DESTINATION "share/revng/component-hashes/")
 
 #
 # share/revng
@@ -165,9 +171,7 @@ install(
 set(ADDITIONAL_BIN_PATHS "${CMAKE_BINARY_DIR}/share/revng/additional-bin-paths")
 file(WRITE "${ADDITIONAL_BIN_PATHS}" "libexec/revng\n")
 
-file(RELATIVE_PATH RELATIVE_LLVM_TOOLS_BINARY_DIR "${CMAKE_INSTALL_PREFIX}"
-     "${LLVM_TOOLS_BINARY_DIR}")
-file(APPEND "${ADDITIONAL_BIN_PATHS}" "${RELATIVE_LLVM_TOOLS_BINARY_DIR}\n")
+file(APPEND "${ADDITIONAL_BIN_PATHS}" "${LLVM_DIR}/../../../libexec\n")
 
 # Create additional-search-prefixes
 file(WRITE "${CMAKE_BINARY_DIR}/additional-search-prefixes"
@@ -231,7 +235,7 @@ foreach(
   # files and runs analyses that determine which CSVs are accessed by each
   # helper function.
   set(LIBTCG_HELPERS
-      "${CMAKE_INSTALL_PREFIX}/share/libtcg/libtcg-helpers-${ARCH}.bc")
+      "${QEMU_HELPERS_DIR}/share/libtcg/libtcg-helpers-${ARCH}.bc")
   set(LIBTCG_HELPERS_FULL
       "${CMAKE_BINARY_DIR}/share/revng/libtcg-helpers-full-${ARCH}.bc")
 
@@ -356,8 +360,16 @@ find_package(
   Python3
   COMPONENTS Interpreter Development
   REQUIRED)
-file(RELATIVE_PATH PYTHON_INSTALL_PATH "${CMAKE_INSTALL_PREFIX}"
-     "${Python3_SITELIB}")
+
+# Derive PYTHON_INSTALL_PATH as the site-packages dir relative to the
+# Python root (e.g. lib/python3.14/site-packages). The upstream
+# `file(RELATIVE_PATH ... CMAKE_INSTALL_PREFIX Python3_SITELIB)` form
+# assumes Python lives under the install prefix, which is true for
+# orchestra but not for nix where they're separate store paths.
+cmake_path(GET Python3_EXECUTABLE PARENT_PATH PYTHON_BIN_DIR)
+cmake_path(GET PYTHON_BIN_DIR PARENT_PATH PYTHON_ROOT)
+cmake_path(RELATIVE_PATH Python3_SITELIB BASE_DIRECTORY "${PYTHON_ROOT}"
+           OUTPUT_VARIABLE PYTHON_INSTALL_PATH)
 
 #
 # Build docs
@@ -387,8 +399,7 @@ add_custom_command(
           "share/doc/revng/user-manual/tutorial/running-analyses.md"
           "share/doc/revng/what-is-revng.md"
           "share/doc/revng/index.md"
-          generate-revngModel-tuple-tree-code
-          generate-revngPipeline-tuple-tree-code
+          install-all-wheels
           python/revng/internal/cli/_commands/process_docs_yaml/pipeline.md.tpl
           python/revng/internal/cli/_commands/process_docs_yaml/artifacts.md.tpl
           python/revng/internal/cli/_commands/process_docs_yaml/analyses.md.tpl
@@ -423,6 +434,7 @@ add_custom_target(mkdocs ALL DEPENDS share/doc/revng/html/404.html)
 add_custom_command(
   OUTPUT "${CMAKE_BINARY_DIR}/share/revng/helper-list.csv"
   COMMAND
+    ${CMAKE_COMMAND} -E env "PATH=${LLVM_DIR}/../../../libexec:$ENV{PATH}"
     ${CMAKE_SOURCE_DIR}/scripts/extract-helper-names.sh ${HELPER_MODULE_LIST} >
     "${CMAKE_BINARY_DIR}/share/revng/helper-list.csv"
   DEPENDS copy_share ${HELPER_MODULE_LIST})
@@ -438,4 +450,4 @@ add_subdirectory(lib)
 add_subdirectory(python)
 add_subdirectory(tests)
 add_subdirectory(tools)
-add_subdirectory(typescript)
+#add_subdirectory(typescript)
