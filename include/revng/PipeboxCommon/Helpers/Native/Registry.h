@@ -32,12 +32,6 @@ public:
   RegistryImpl &operator=(const RegistryImpl &&) = delete;
 };
 
-// WIP: -fvisibility-inlines-hidden makes this inline variable hidden,
-// so the dlopen'd .so (loaded via `-load=`) and the executable see
-// different Registry instances. RegisterAnalysis<T> static initialisers
-// then write into the .so's copy while pypeline-run-analysis's main
-// reads the executable's empty copy and aborts. Force default
-// visibility so the symbol lands in dynsym and unifies across DSOs.
-[[gnu::visibility("default")]] inline RegistryImpl Registry;
+inline RegistryImpl Registry;
 
 } // namespace revng::pypeline::helpers::native

@@ -94,6 +94,11 @@ macro(revng_add_executable_internal NAME TARGET_PATH)
 
   add_executable("${NAME}" ${ARGN})
   append_target_property("${NAME}" "LINK_FLAGS" "-pie" " ")
+  # Export the executable's global symbols (e.g. the
+  # PipeboxCommon::Helpers::*::Registry inline singletons) so plugins
+  # loaded via LLVM's -load= dlopen end up writing into and reading
+  # from the same Registry instance the executable owns.
+  append_target_property("${NAME}" "LINK_FLAGS" "-rdynamic" " ")
 
   add_dependencies(revng-all-binaries "${NAME}")
 

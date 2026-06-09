@@ -40,6 +40,12 @@ function(python_module)
       WRITE
       "${CMAKE_BINARY_DIR}/build-wheel/${PYTHON_MODULE_WHEEL}/${PYTHON_MODULE_MODULE_INIT}"
       "${MODULE_INIT_CONTENTS}")
+    # Stage the same init into PYTHON_INSTALL_PATH so the staging tree
+    # is importable before pip install runs (mixins.py needs this).
+    file(
+      WRITE
+      "${CMAKE_BINARY_DIR}/${PYTHON_INSTALL_PATH}/${PYTHON_MODULE_MODULE_INIT}"
+      "${MODULE_INIT_CONTENTS}")
     list(
       APPEND
       "WHEEL_FILES_${PYTHON_MODULE_WHEEL}"
@@ -52,6 +58,13 @@ function(python_module)
       "${MODULE_FILE}"
       "${CMAKE_BINARY_DIR}/build-wheel/${PYTHON_MODULE_WHEEL}/${MODULE_FILE}"
       COPYONLY)
+    # Stage source files into PYTHON_INSTALL_PATH alongside the
+    # generated ones; otherwise mixins.py (which runs against this
+    # staging tree before pip install) sees an incomplete package.
+    configure_file(
+      "${MODULE_FILE}"
+      "${CMAKE_BINARY_DIR}/${PYTHON_INSTALL_PATH}/${MODULE_FILE}"
+      COPYONLY)
     list(
       APPEND "WHEEL_FILES_${PYTHON_MODULE_WHEEL}"
       "${CMAKE_BINARY_DIR}/build-wheel/${PYTHON_MODULE_WHEEL}/${MODULE_FILE}")
@@ -61,9 +74,9 @@ function(python_module)
     add_custom_command(
       OUTPUT
         "${CMAKE_BINARY_DIR}/build-wheel/${PYTHON_MODULE_WHEEL}/${MODULE_FILE}"
-      DEPENDS "${CMAKE_BINARY_DIR}/python/${MODULE_FILE}"
+      DEPENDS "${CMAKE_BINARY_DIR}/${PYTHON_INSTALL_PATH}/${MODULE_FILE}"
       COMMAND
-        cp -a "${CMAKE_BINARY_DIR}/python/${MODULE_FILE}"
+        cp -a "${CMAKE_BINARY_DIR}/${PYTHON_INSTALL_PATH}/${MODULE_FILE}"
         "${CMAKE_BINARY_DIR}/build-wheel/${PYTHON_MODULE_WHEEL}/${MODULE_FILE}")
     list(
       APPEND "WHEEL_FILES_${PYTHON_MODULE_WHEEL}"
@@ -101,7 +114,6 @@ endfunction()
 # Wheel generation
 #
 add_custom_target(install-all-wheels ALL)
-add_dependencies(revng-all-binaries install-all-wheels)
 
 function(python_wheel)
   set(options)
@@ -269,12 +281,12 @@ add_custom_command(
 add_custom_command(
   COMMAND
     env "PYTHONPATH=${CMAKE_BINARY_DIR}/${PYTHON_INSTALL_PATH}"
-    "${CMAKE_SOURCE_DIR}/scripts/generate-project-mixins.sh"
+    bash "${CMAKE_SOURCE_DIR}/scripts/generate-project-mixins.sh"
     "${CMAKE_SOURCE_DIR}/python/revng/project/model/mixins.py.tpl"
     "${CMAKE_BINARY_DIR}/${PYTHON_INSTALL_PATH}/revng/project/model/mixins.py"
   OUTPUT
     "${CMAKE_BINARY_DIR}/${PYTHON_INSTALL_PATH}/revng/project/model/mixins.py"
-  DEPENDS revng-all-binaries
+  DEPENDS revng-all-binaries _pipebox
           "${CMAKE_SOURCE_DIR}/scripts/generate-project-mixins.py"
           "${CMAKE_SOURCE_DIR}/scripts/generate-project-mixins.sh"
           "${CMAKE_SOURCE_DIR}/python/revng/project/model/mixins.py.tpl"
@@ -282,7 +294,7 @@ add_custom_command(
 
 add_custom_command(
   COMMAND
-    "${CMAKE_SOURCE_DIR}/scripts/jsonschema_to_py.sh"
+    bash "${CMAKE_SOURCE_DIR}/scripts/jsonschema_to_py.sh"
     "${CMAKE_SOURCE_DIR}/python/revng/pypeline/pipeline-description-schema.yml"
     "${CMAKE_BINARY_DIR}/${PYTHON_INSTALL_PATH}/revng/project/pipeline_description.py"
     "PipelineDescription"
@@ -559,12 +571,12 @@ set(REVNG_PYPELINE_MODULE_FILES
 add_custom_command(
   COMMAND
     cp -a
-    "${CMAKE_BINARY_DIR}/${PYTHON_INSTALL_PATH}/revng/support/buffered_reader.py"
+    "${CMAKE_SOURCE_DIR}/python/revng/support/buffered_reader.py"
     "${CMAKE_BINARY_DIR}/${PYTHON_INSTALL_PATH}/revng/pypeline/utils/buffered_reader.py"
   OUTPUT
     "${CMAKE_BINARY_DIR}/${PYTHON_INSTALL_PATH}/revng/pypeline/utils/buffered_reader.py"
   DEPENDS
-    "${CMAKE_BINARY_DIR}/${PYTHON_INSTALL_PATH}/revng/support/buffered_reader.py"
+    "${CMAKE_SOURCE_DIR}/python/revng/support/buffered_reader.py"
 )
 
 python_module(
@@ -597,7 +609,7 @@ set_target_properties(
   PROPERTIES LINKER_LANGUAGE CXX
              PREFIX ""
              LIBRARY_OUTPUT_DIRECTORY
-             "${CMAKE_BINARY_DIR}/python/revng/internal")
+             "${CMAKE_BINARY_DIR}/${PYTHON_INSTALL_PATH}/revng/internal")
 target_link_libraries(
   "${CPP_MODULE_NAME}" PUBLIC ${Python3_LIBRARIES} ${LLVM_LIBRARIES} nanobind
                               revngSupport revngModel)

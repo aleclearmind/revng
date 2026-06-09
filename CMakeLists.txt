@@ -47,7 +47,13 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wextra")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Werror")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-rtti")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-exceptions")
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fvisibility-inlines-hidden")
+# Don't hide inline linkonce variables: the per-symbol
+# [[gnu::visibility("default")]] on the Helpers::*::Registry singletons
+# was supposed to override this, but clang keeps them local under
+# -fvisibility-inlines-hidden — the dlopen'd pipebox library then
+# carries its own Registry instance and the executable's lookups miss
+# everything the library registered.
+# set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fvisibility-inlines-hidden")
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 # set(TUPLE_TREE_GENERATOR_EMIT_TRACKING_DEBUG ON)
 
@@ -322,7 +328,7 @@ add_custom_command(
           "${CMAKE_SOURCE_DIR}/share/revng/clang-format-style-file.yml"
           copy_share copy_libexec
   COMMAND
-    "${CMAKE_BINARY_DIR}/libexec/revng/check-conventions" ARGS
+    python3 "${CMAKE_BINARY_DIR}/libexec/revng/check-conventions" ARGS
     --print-clang-format-config >
     "${CMAKE_BINARY_DIR}/share/revng/.clang-format")
 
@@ -435,7 +441,7 @@ add_custom_command(
   OUTPUT "${CMAKE_BINARY_DIR}/share/revng/helper-list.csv"
   COMMAND
     ${CMAKE_COMMAND} -E env "PATH=${LLVM_DIR}/../../../libexec:$ENV{PATH}"
-    ${CMAKE_SOURCE_DIR}/scripts/extract-helper-names.sh ${HELPER_MODULE_LIST} >
+    bash ${CMAKE_SOURCE_DIR}/scripts/extract-helper-names.sh ${HELPER_MODULE_LIST} >
     "${CMAKE_BINARY_DIR}/share/revng/helper-list.csv"
   DEPENDS copy_share ${HELPER_MODULE_LIST})
 add_custom_target(helper-list ALL

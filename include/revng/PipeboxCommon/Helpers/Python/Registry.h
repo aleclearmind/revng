@@ -42,8 +42,6 @@ public:
   }
 };
 
-// WIP: same DSO-visibility issue as the native::Registry — see
-// Native/Registry.h for the full rationale.
-[[gnu::visibility("default")]] inline RegistryImpl Registry;
+inline RegistryImpl Registry;
 
 } // namespace revng::pypeline::helpers::python

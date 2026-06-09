@@ -4,6 +4,7 @@
 
 import os
 import sys
+import tempfile
 from collections.abc import Iterable as CIterable
 from ctypes import CDLL
 from functools import lru_cache
@@ -71,8 +72,16 @@ def configuration():
 def cache_directory() -> Path:
     if "cache-path" in configuration():
         return Path("cache-path")
-    else:
-        return xdg_cache_home() / "revng"
+    candidate = xdg_cache_home() / "revng"
+    try:
+        candidate.mkdir(parents=True, exist_ok=True)
+        return candidate
+    except OSError:
+        # $HOME (and hence xdg_cache_home()) is not writable — typical
+        # of build sandboxes. Fall back to a per-user dir under TMPDIR.
+        fallback = Path(tempfile.gettempdir()) / f"revng-{os.getuid()}"
+        fallback.mkdir(parents=True, exist_ok=True)
+        return fallback
 
 
 def import_pipebox(libraries: Iterable[str | Path]) -> tuple[Any, list[Any]]:

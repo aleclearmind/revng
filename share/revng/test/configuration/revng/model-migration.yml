@@ -29,7 +29,7 @@ commands:
         filter: for-model-migration
     command: |-
       cd $$(temp -d);
-      cp "${INPUT}/model.yml" .;
+      install -m644 "${INPUT}/model.yml" ./model.yml;
       revng2 project analyze apply-diff -o /dev/null;
 
       while IFS=',' read -r MODEL_FIELD EXPECTED_VALUE; do
