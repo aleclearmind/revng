@@ -1,4 +1,4 @@
-{ pkgs, python, inputs }:
+{ pkgs, python, inputs, nanobind }:
 let
   workspace = inputs.uv2nix.lib.workspace.loadWorkspace {
     workspaceRoot = pkgs.lib.cleanSourceWith {
@@ -46,4 +46,12 @@ let
   );
   venv = pythonSet.mkVirtualEnv "revng-python-dependencies" workspace.deps.default;
 in
-venv
+# Drop nanobind into the venv's site-packages so it's discoverable
+# alongside the uv2nix-resolved wheels — callers can use this attr
+# as a single Python env (no PYTHONPATH gymnastics).
+venv.overrideAttrs (old: {
+  postInstall = (old.postInstall or "") + ''
+    cp -a ${nanobind}/${python.sitePackages}/nanobind \
+      $out/${python.sitePackages}/nanobind
+  '';
+})

@@ -1,5 +1,8 @@
 { pkgs, stdenv, python }:
-stdenv.mkDerivation {
+# Wrap with toPythonModule so the derivation can be fed straight to
+# python.withPackages — consumers then don't need to thread
+# `${nanobind}/${python.sitePackages}` into PYTHONPATH by hand.
+python.pkgs.toPythonModule (stdenv.mkDerivation {
   name = "nanobind";
 
   src = pkgs.fetchFromGitHub {
@@ -33,4 +36,4 @@ stdenv.mkDerivation {
     "-DBUILD_SHARED_LIBS=ON"
   ];
 
-}
+})
