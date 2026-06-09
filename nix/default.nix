@@ -12,6 +12,7 @@ let
       revngQaPkgs = sp.callPackage ./packages/revng-qa.nix { };
       modelsPkgs = sp.callPackage ./models.nix { };
       rootfsPkgs = sp.callPackage ./packages/rootfs.nix { };
+      winRootfsPkgs = sp.callPackage ./packages/win-rootfs.nix { };
       win32metadataPkgs = sp.callPackage ./packages/win32metadata { };
     in
     {
@@ -70,6 +71,12 @@ let
       "rootfs/ubuntu-24-04-s390x" = rootfsPkgs."rootfs/ubuntu-24-04-s390x";
       "rootfs/debian-bookworm-mipsel" = rootfsPkgs."rootfs/debian-bookworm-mipsel";
       "rootfs/debian-buster-mips" = rootfsPkgs."rootfs/debian-buster-mips";
+
+      "rootfs/windows-x86-64" = winRootfsPkgs."rootfs/windows-x86-64";
+      "rootfs/windows-aarch64" = winRootfsPkgs."rootfs/windows-aarch64";
+      "rootfs/windows-7-x86" = winRootfsPkgs."rootfs/windows-7-x86";
+      "rootfs/windows-8-x86-64" = winRootfsPkgs."rootfs/windows-8-x86-64";
+      "rootfs/windows-8-1-x86-64" = winRootfsPkgs."rootfs/windows-8-1-x86-64";
 
       "rootfs/ubuntu-20-04-x86-64/debug-info" = rootfsPkgs."rootfs/ubuntu-20-04-x86-64/debug-info";
       "rootfs/ubuntu-22-04-x86-64/debug-info" = rootfsPkgs."rootfs/ubuntu-22-04-x86-64/debug-info";
