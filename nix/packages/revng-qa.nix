@@ -32,6 +32,19 @@ let
 
     unpackPhase = "true";
 
+    # nixpkgs's gcc-wrapper defaults to enabling `zerocallusedregs`,
+    # which adds `-fzero-call-used-regs=used-gpr`. That makes the
+    # compiler emit `xor %edx,%edx; xor %ecx,%ecx; …` before every
+    # `ret` (clearing non-callee-saved GPRs as a Spectre-style
+    # gadget hardening). revng's DetectABI then sees those zeroed
+    # registers as "written and never read at exit" and infers them
+    # as part of the return-value register set — c-operator-precedence
+    # decompiles to `struct_82 { offset_0; offset_8 }` instead of a
+    # plain `uint64_t`. Test binaries are inputs to the analyzer; we
+    # need their codegen to match what orchestra produces, which
+    # means no hardening fixups.
+    hardeningDisable = [ "zerocallusedregs" ];
+
     nativeBuildInputs =
       with pkgs;
       (
