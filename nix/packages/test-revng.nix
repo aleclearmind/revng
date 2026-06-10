@@ -98,6 +98,40 @@ stdenv.mkDerivation {
     mkdir -p "$XDG_CACHE_HOME/.cache"
   '';
 
+  # Shell functions exposed when you `nix develop .#"test/revng"`.
+  # Lets you iterate on individual targets without paying the
+  # ~10s/run nix-develop evaluation cost each time.
+  shellHook = ''
+    repro-setup() {
+      local wd=''${1:-/tmp/revng-test-repro}
+      mkdir -p "$wd" || return $?
+      (
+        cd "$wd" &&
+        rm -f build.ninja build.ninja.diag &&
+        eval "$preInstall" &&
+        echo "Setup complete in $wd."
+      )
+    }
+    repro-run() {
+      local target=''${1:?'usage: repro-run TARGET [WORKDIR]'}
+      local wd=''${2:-/tmp/revng-test-repro}
+      (
+        cd "$wd" || return $?
+        # First call: regenerate build.ninja via preInstall.
+        if [[ ! -f build.ninja ]]; then eval "$preInstall"; fi
+        # The test rules wrap each binary in `2>/dev/null || true`;
+        # strip both so SIGABRT/SIGILL backtraces are visible.
+        if [[ ! -f build.ninja.diag ]] || [[ build.ninja -nt build.ninja.diag ]]; then
+          sed -e "s# 2>/dev/null##g" -e "s# || true##g" build.ninja > build.ninja.diag
+        fi
+        ninja -f build.ninja.diag -v -k0 "$target"
+      )
+    }
+    if [[ -t 1 && -z ''${REPRO_QUIET:-} ]]; then
+      echo "[test/revng] helpers available: repro-setup, repro-run"
+    fi
+  '';
+
   installPhase = ''
     mkdir -p $out
     runHook preInstall
