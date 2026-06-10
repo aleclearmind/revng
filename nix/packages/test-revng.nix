@@ -62,8 +62,15 @@ stdenv.mkDerivation {
     echo
   '';
 
-  installPhase = ''
-    mkdir -p $out
+  # All the re-runnable setup work lives in `preInstall` so it's
+  # exported as a bash variable in `nix develop .#"test/revng"` —
+  # users can `eval "$preInstall"` once inside a fresh workdir to
+  # regenerate build.ninja, then `ninja <target>` individual targets.
+  # Don't reach for nixpkgs setup-hook functions (`patchShebangs`,
+  # etc.) here — they're only defined when `$stdenv/setup` is
+  # sourced, which in nix develop's --command mode happens to also
+  # trigger genericBuild and run every phase.
+  preInstall = ''
     python3 \
       ${revngPackages.revng-qa}/libexec/revng/test-configure \
       "${revngPackages.revng-qa}/share/revng/test/configuration/revng-qa/"*.yml \
@@ -71,17 +78,29 @@ stdenv.mkDerivation {
       --install-path "${mergedTestRoot}" \
       --destination . \
       --target-type 'revng\..*'
-    # WIP: test-configure writes inline scripts (filter.py
-    # etc.) with `#!/usr/bin/env python3` shebangs. The nix
-    # sandbox has no /usr/bin/env, so patchShebangs rewrites
-    # them to absolute paths. Drop if test-configure ever
-    # emits absolute shebangs itself.
-    patchShebangs --build .
-    
+    # test-configure writes inline scripts (filter.py, emit-and-check-c
+    # etc.) with `#!/usr/bin/env <interp>` shebangs that don't resolve
+    # in the sandbox. Hand-rolled patchShebangs equivalent — covers
+    # the four interpreter forms test-configure actually emits.
+    for _f in $(find . -maxdepth 2 -type f \( -name "*.py" -o -name "*.sh" -o -name "*.js" \)); do
+      sed -i "1{
+        s|^#!/usr/bin/env python3.*|#!$(command -v python3)|
+        s|^#!/usr/bin/env bash.*|#!$(command -v bash)|
+        s|^#!/usr/bin/env node.*|#!$(command -v node)|
+        s|^#!/bin/bash.*|#!$(command -v bash)|
+      }" "$_f"
+    done
+    unset _f
+
     export REVNG_OPTIONS="--debug-log=verify"
     export PYPELINE_STORAGE_PROVIDER="local://?inline"
     export XDG_CACHE_HOME="$PWD/.cache"
     mkdir -p "$XDG_CACHE_HOME/.cache"
+  '';
+
+  installPhase = ''
+    mkdir -p $out
+    runHook preInstall
 
     # WIP: tolerate failing test targets — bumped revng +
     # new pypeline still have several upstream-known crashes.
@@ -90,7 +109,7 @@ stdenv.mkDerivation {
     ninja -v -k0 all 2>&1 | tee "$out/log/ninja.log" || true
 
     # Extract the list of FAILED targets for convenience.
-    grep -oE 'FAILED: \[code=[0-9]+\] [^ ]+' "$out/log/ninja.log" \
+    grep -oE '^FAILED: [^ ]+' "$out/log/ninja.log" \
       > "$out/log/failed-targets.txt" || true
     echo "test/revng: $(wc -l < $out/log/failed-targets.txt) failing target(s); see $out/log/"
   '';
