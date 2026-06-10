@@ -57,7 +57,15 @@ using type_info = void;
 #define __throw_bad_any_cast abort
 #define __libcpp_unreachable abort
 #define _LIBCPP_HAS_NO_RTTI
+#pragma push_macro("_LIBCPP_INLINE_VISIBILITY")
+#ifdef _LIBCPP_INLINE_VISIBILITY
+#undef _LIBCPP_INLINE_VISIBILITY
+#endif
 #define _LIBCPP_INLINE_VISIBILITY
+#pragma push_macro("_LIBCPP_TEMPLATE_VIS")
+#ifdef _LIBCPP_TEMPLATE_VIS
+#undef _LIBCPP_TEMPLATE_VIS
+#endif
 #define _LIBCPP_TEMPLATE_VIS
 #define _LIBCPP_AVAILABILITY_THROW_BAD_ANY_CAST
 
@@ -700,6 +708,8 @@ using TraitfulAny = any<Trait>;
 
 #pragma pop_macro("_VSTD")
 #pragma pop_macro("_LIBCPP_HIDE_FROM_ABI")
+#pragma pop_macro("_LIBCPP_INLINE_VISIBILITY")
+#pragma pop_macro("_LIBCPP_TEMPLATE_VIS")
 #undef __remove_cvref_t
 #undef __throw_bad_any_cast
 #undef __libcpp_unreachable

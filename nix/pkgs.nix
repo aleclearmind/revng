@@ -45,7 +45,15 @@ let
   # * clang as a compiler
   # * libc++ as C++ standard library
   # * mold as linker
-  stdenv = (pkgs.useMoldLinker pkgs.llvmPackages_21.libcxxStdenv);
+  #
+  # Pin to LLVM 16 (matching orchestra/clang-release): revng links its
+  # analysis passes against LLVM 16 internals via packages/llvm.nix,
+  # so the runtime libc++ must match. With libcxx 21 the decompiler
+  # picks the wrong return ABI for scalar-returning functions and
+  # several Clift passes (computeBestTraversal et al.) SIGILL.
+  # llvmPackages_16 was dropped from our primary nixpkgs as obsolete,
+  # so we source it from the pinned pkgs-2505 (NixOS 25.05) instead.
+  stdenv = (pkgs.useMoldLinker pkgs-2505.llvmPackages_16.libcxxStdenv);
   ccacheStdenv = stdenv;
   # ccacheStdenv = pkgs.ccacheStdenv.override {
   #   stdenv = stdenv;
