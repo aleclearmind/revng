@@ -44,7 +44,10 @@ let
           ${archRspFlags} \
           --output-dir build
         cd build
-        ninja -j"$(nproc)"
+        # `-j$(nproc)` OOMs on hosts with <~4 GB/core: each parallel
+        # clang invocation peaks around 2 GB. Honor nix's `--cores N`
+        # (exported as $NIX_BUILD_CORES) so callers can cap it.
+        ninja -j"''${NIX_BUILD_CORES:-$(nproc)}"
       '';
       installPhase = ''
         # buildPhase ended inside build/; we're already there.
