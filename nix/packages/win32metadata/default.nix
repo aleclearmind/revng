@@ -28,7 +28,6 @@ let
       unpackPhase = "true";
       nativeBuildInputs = [
         llvm
-        pkgs.lld_21
         pkgs.ninja
         python
         vcToolchain
@@ -38,7 +37,7 @@ let
         python3 ${./compile-to-pdb.py} \
           --win32meta-root ${win32metadata} \
           --clang ${llvm}/libexec/clang \
-          --lld-link ${pkgs.lld_21}/bin/lld-link \
+          --lld-link ${llvm}/libexec/lld-link \
           --vc19-include ${vcToolchain}/lib/vc/${vcTriple}/VC/include \
           --target-triple "${targetTriple}" \
           ${archRspFlags} \

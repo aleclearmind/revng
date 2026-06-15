@@ -37,7 +37,7 @@ ccacheStdenv.mkDerivation {
     "-DLLVM_ENABLE_ZSTD=OFF"
 
     "-DBUILD_SHARED_LIBS=ON"
-    "-DLLVM_ENABLE_PROJECTS=clang;mlir"
+    "-DLLVM_ENABLE_PROJECTS=clang;mlir;lld"
     "-DLLVM_TARGETS_TO_BUILD=AArch64;ARM;Mips;SystemZ;X86"
     "-DCMAKE_CXX_FLAGS=-Wno-global-constructors"
   ];
