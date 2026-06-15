@@ -60,6 +60,7 @@ let
       "test/revng-qa/models" = sp.callPackage ./packages/test-revng-qa-models.nix { };
       model-db = sp.callPackage ./packages/model-db.nix { };
       "test/revng" = sp.callPackage ./packages/test-revng.nix { };
+      "test/revng-db" = sp.callPackage ./packages/test-revng-db.nix { };
       "test/revng-prss" = sp.callPackage ./packages/test-revng-prss.nix { };
 
       "rootfs/ubuntu-20-04-x86-64" = rootfsPkgs."rootfs/ubuntu-20-04-x86-64";
