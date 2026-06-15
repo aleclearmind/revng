@@ -203,10 +203,12 @@ let
           description = Importing \$in
         EOF
 
-        # WIP: cap each rootfs at 10 binaries to keep each build at
-        # a few minutes. Set to 0 to import every ELF (multiple
-        # hours per rootfs, ~5 days for the whole tree).
-        MAX_BINARIES=10
+        # Per-rootfs cap: set to a positive integer to limit the
+        # number of ELFs imported (useful for cutting build time on
+        # rootfs flavours where a few minutes of coverage is enough);
+        # 0 (current default) means import every ELF — multiple hours
+        # per rootfs, ~5 days for the whole tree.
+        MAX_BINARIES=0
         find "$SOURCE_DIR" \
           -not -path "$SOURCE_DIR/symbols-cache/*" \
           -not -path "*/debug/.build-id/*" \
