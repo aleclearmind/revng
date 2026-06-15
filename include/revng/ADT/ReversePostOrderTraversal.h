@@ -16,9 +16,15 @@ class ReversePostOrderTraversalExt {
   NodeVec Blocks; // Block list in normal RPO order
 
   void initialize(GraphT G, SetType &WhiteList) {
-    using ExtIter = llvm::po_ext_iterator<GraphT, SetType, GT>;
-    std::copy(ExtIter::begin(G, WhiteList),
-              ExtIter::end(G, WhiteList),
+    // The traits used here must be GraphTraits<GraphT> (which is what
+    // the free-function `po_ext_begin/end` form does), not the class's
+    // user-supplied GT template parameter: callers can pass a GT
+    // configured for a *different* graph type (e.g. MFP::Liveness
+    // uses GraphTraits<Function*> on a graph rooted at a Block*),
+    // and threading that GT through here makes `getEntryNode(G)`
+    // try to convert the wrong pointer type.
+    std::copy(llvm::po_ext_begin(G, WhiteList),
+              llvm::po_ext_end(G, WhiteList),
               std::back_inserter(Blocks));
   }
 
