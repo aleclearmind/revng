@@ -67,6 +67,15 @@ def revng_driver_init(arguments) -> Options:
     # Add root as search prefix
     options.search_prefixes = extend_list(options.search_prefixes, [str(get_root())])
 
+    # REVNG_RESOURCES (colon-separated, PATH-style) lets callers point
+    # the Python CLI at extra roots — mirrors the C++ ResourceFinder
+    # env-var hook in lib/Support/ResourceFinder.cpp. Inserted at the
+    # front so the override wins.
+    env_resources = os.environ.get("REVNG_RESOURCES", "")
+    if env_resources:
+        env_prefixes = [p for p in env_resources.split(":") if p]
+        options.search_prefixes = extend_list(options.search_prefixes, env_prefixes)
+
     # Collect search prefixes
     prefixes = []
     for arg, next_arg in zip(arguments, arguments[1:] + [""]):
