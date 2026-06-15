@@ -366,6 +366,7 @@ set(REVNG_CLI_COMMANDS_MODULE_FILES
     revng/internal/cli/_commands/hard_purge.py
     revng/internal/cli/_commands/process_docs_yaml/__init__.py
     revng/internal/cli/_commands/tar_to_yaml.py
+    revng/internal/cli/_commands/find_path.py
     revng/internal/cli/_commands/test_docs/__init__.py
     revng/internal/cli/_commands/test_docs/doctest_runner.py
     revng/internal/cli/_commands/trace_run.py
