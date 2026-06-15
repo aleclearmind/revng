@@ -23,6 +23,12 @@ model::TypeDefinition::trySize(VerifyHelper &VH) const {
     Result = rc_recur E->UnderlyingType()->trySize(VH);
 
   } else if (auto *T = llvm::dyn_cast<model::TypedefDefinition>(this)) {
+    // TODO: detect cycles in the typedef chain. A malformed PDB can produce
+    //       an LF_ALIAS whose target transitively references itself (e.g.
+    //       win32metadata emits PULONG=LF_ALIAS -> LF_PROCEDURE ->
+    //       LF_ARGLIST(PULONG)), driving this `rc_recur` to unbounded depth
+    //       and SIGSEGV'ing in the coroutine-frame allocator. A "currently
+    //       computing" set on VH would let us return nullopt and bail.
     Result = rc_recur T->UnderlyingType()->trySize(VH);
 
   } else if (auto *S = llvm::dyn_cast<model::StructDefinition>(this)) {
