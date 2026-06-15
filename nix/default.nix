@@ -33,6 +33,15 @@ let
         inherit system;
       };
       msvc = sp.callPackage ./packages/msvc { };
+      # Expose each MSVC triple as its own attr so callers can do
+      # `nix build .#"toolchain/win32-vc16"` etc. Names mirror
+      # orchestra's components/revng-test.yml dep list.
+      "toolchain/win32-vc12" = sp.msvc.byTriple."i386-winsdk-vc12";
+      "toolchain/win32-vc13" = sp.msvc.byTriple."i386-winsdk-vc13";
+      "toolchain/win32-vc16" = sp.msvc.byTriple."i386-winsdk-vc16";
+      "toolchain/win32-vc19" = sp.msvc.byTriple."i386-winsdk-vc19";
+      "toolchain/win64-vc19" = sp.msvc.byTriple."x86_64-winsdk-vc19";
+      "toolchain/win64-aarch64-vc19" = sp.msvc.byTriple."aarch64-winsdk-vc19";
       boost = sp.callPackage ./packages/boost.nix { };
       inherit (awsPkgs) aws-crt-cpp aws-sdk-cpp;
       revngPythonDependencies = sp.callPackage ./packages/revng-python-dependencies { };
