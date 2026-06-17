@@ -306,8 +306,6 @@ branches:
             - split-overflow-intrinsics
             - dce
             - remove-llvmassume-calls
-      - pipe: make-segment-ref
-        arguments: [binaries-container, llvm-functions]
       - savepoint: make-segment-ref
         containers: [llvm-functions]
         artifacts:
