@@ -22,4 +22,4 @@ commands:
           revng opt -S >> "$$WORKDIR/simplify-switch.ll";
       done;
 
-      FileCheck "${SOURCE}.filecheck" < "$$WORKDIR/simplify-switch.ll";
+      FileCheck "${COMMAND_ROOT}/${SOURCE}.filecheck" < "$$WORKDIR/simplify-switch.ll";

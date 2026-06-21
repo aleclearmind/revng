@@ -26,4 +26,4 @@ commands:
       yq -r 'to_entries[].value' "$$PROJECT/out.yml"
         | while IFS= read -r b64 ; do printf '%s' "$$b64" | base64 -d | revng opt -S /dev/stdin -o - ; done
         | sed 's,@local_,@,g'
-        | FileCheck --check-prefixes=$$PREFIXES "${SOURCE}".filecheck
+        | FileCheck --check-prefixes=$$PREFIXES "${COMMAND_ROOT}/${SOURCE}".filecheck

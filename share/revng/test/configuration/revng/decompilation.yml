@@ -26,7 +26,7 @@ commands:
     from:
       - type: revng.emit-c
     command: |-
-      revng model compare "${SOURCE}".model.yml "$INPUT/model.yml"
+      revng model compare "${COMMAND_ROOT}/${SOURCE}".model.yml "$INPUT/model.yml"
   # TODO: convert this test to the new backend when possible
   - # Check well-formedness of decompiled C
     type: revng.legacy.decompile-to-single-file.check-decompiled-c
@@ -52,4 +52,4 @@ commands:
     command: |-
       RESUME=$$(temp -d);
       cp -Tar "$INPUT2" "$$RESUME";
-      revng artifact --resume "$$RESUME" decompile-to-single-file "$INPUT1" | revng ptml | FileCheck "${SOURCE}".filecheck
+      revng artifact --resume "$$RESUME" decompile-to-single-file "$INPUT1" | revng ptml | FileCheck "${COMMAND_ROOT}/${SOURCE}".filecheck

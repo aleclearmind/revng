@@ -9,4 +9,4 @@ commands:
         filter: for-import-types
     command: |-
       revng2 quick analyze --analyses=parse-binary "$INPUT"
-          | revng model compare "${SOURCE}.model.yml";
+          | revng model compare "${COMMAND_ROOT}/${SOURCE}.model.yml";

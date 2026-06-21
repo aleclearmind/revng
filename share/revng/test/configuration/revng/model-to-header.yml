@@ -28,4 +28,4 @@ commands:
         yq -r '.["/binary"]' |
         revng ptml > "$OUTPUT";
       revng check-decompiled-c "$OUTPUT";
-      FileCheck --input-file="$OUTPUT" "${SOURCE}.filecheck";
+      FileCheck --input-file="$OUTPUT" "${COMMAND_ROOT}/${SOURCE}.filecheck";

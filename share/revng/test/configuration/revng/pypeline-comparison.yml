@@ -21,7 +21,7 @@ commands:
       - type: revng.test-pypeline-comparison-prepare
     command: |-
       cd "$INPUT";
-      "${SOURCES_ROOT}/share/revng/test/tests/pypeline-comparison/compare.sh" model.yml input lift;
+      "${COMMAND_ROOT}/share/revng/test/tests/pypeline-comparison/compare.sh" model.yml input lift;
 
   # Run disassemble comparison
   - type: revng.test-pypeline-comparison-disassemble
@@ -29,7 +29,7 @@ commands:
       - type: revng.test-pypeline-comparison-prepare
     command: |-
       cd "$INPUT";
-      "${SOURCES_ROOT}/share/revng/test/tests/pypeline-comparison/compare.sh" model.yml input disassemble;
+      "${COMMAND_ROOT}/share/revng/test/tests/pypeline-comparison/compare.sh" model.yml input disassemble;
 
   # Run emit-model-header comparison
   - type: revng.test-pypeline-comparison-emit-model-header
@@ -37,7 +37,7 @@ commands:
       - type: revng.test-pypeline-comparison-prepare
     command: |-
       cd "$INPUT";
-      "${SOURCES_ROOT}/share/revng/test/tests/pypeline-comparison/compare.sh" model.yml input emit-model-header;
+      "${COMMAND_ROOT}/share/revng/test/tests/pypeline-comparison/compare.sh" model.yml input emit-model-header;
 
   # Run emit-type-definitions comparison
   - type: revng.test-pypeline-comparison-emit-type-definitions
@@ -45,7 +45,7 @@ commands:
       - type: revng.test-pypeline-comparison-prepare
     command: |-
       cd "$INPUT";
-      "${SOURCES_ROOT}/share/revng/test/tests/pypeline-comparison/compare.sh" model.yml input emit-type-definitions;
+      "${COMMAND_ROOT}/share/revng/test/tests/pypeline-comparison/compare.sh" model.yml input emit-type-definitions;
 
   # Run hexdump comparison
   - type: revng.test-pypeline-comparison-hexdump
@@ -53,7 +53,7 @@ commands:
       - type: revng.test-pypeline-comparison-prepare
     command: |-
       cd "$INPUT";
-      "${SOURCES_ROOT}/share/revng/test/tests/pypeline-comparison/compare.sh" model.yml input hexdump;
+      "${COMMAND_ROOT}/share/revng/test/tests/pypeline-comparison/compare.sh" model.yml input hexdump;
 
   # Run isolate comparison
   - type: revng.test-pypeline-comparison-isolate
@@ -61,4 +61,4 @@ commands:
       - type: revng.test-pypeline-comparison-prepare
     command: |-
       cd "$INPUT";
-      "${SOURCES_ROOT}/share/revng/test/tests/pypeline-comparison/compare_isolate.sh" model.yml input;
+      "${COMMAND_ROOT}/share/revng/test/tests/pypeline-comparison/compare_isolate.sh" model.yml input;

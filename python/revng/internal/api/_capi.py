@@ -14,7 +14,7 @@ from cffi.backend_ctypes import CTypesBackend
 
 from revng.internal.support import to_iterable
 from revng.internal.support.collect import collect_libraries, collect_pipelines
-from revng.support import AnyPaths, collect_one, get_root
+from revng.support import AnyPaths, collect_one, get_root, get_search_prefixes
 
 
 # This counter is used to count the pointers released by PipelineC, since
@@ -126,9 +126,16 @@ class ApiWrapper:
 ROOT = get_root()
 HEADERS_DIR = ROOT / "include" / "revng" / "PipelineC"
 
+# `_capi.py` runs at import time, before the `revng` CLI populates
+# `options.search_prefixes`, so we assemble our own equivalent here.
+# Without this, a multi-root install (Nix, anything that splits the
+# Python venv from revng's headers + .so) can't find PipelineC's
+# headers or librevngPipelineC.so.
+_SEARCH_PREFIXES = get_search_prefixes()
+
 header_paths = [
-    collect_one(ROOT, ["include", "revng", "PipelineC"], "ForwardDeclarationsC.h"),
-    collect_one(ROOT, ["include", "revng", "PipelineC"], "Prototypes.h"),
+    collect_one(_SEARCH_PREFIXES, ["include", "revng", "PipelineC"], "ForwardDeclarationsC.h"),
+    collect_one(_SEARCH_PREFIXES, ["include", "revng", "PipelineC"], "Prototypes.h"),
 ]
 
 ffi = FFI()
@@ -146,7 +153,7 @@ for header_path in header_paths:
         ffi.cdef(lines)
 
 
-LIBRARY_PATH = collect_one(ROOT, ["lib"], "librevngPipelineC.so")
+LIBRARY_PATH = collect_one(_SEARCH_PREFIXES, ["lib"], "librevngPipelineC.so")
 assert LIBRARY_PATH is not None, "librevngPipelineC.so not found"
 
 ctypes_backend = CTypesBackend()
@@ -164,12 +171,12 @@ def initialize(
     """Initialize library, must be called exactly once"""
 
     if libraries is None:
-        libraries, _ = collect_libraries(ROOT)
+        libraries, _ = collect_libraries(_SEARCH_PREFIXES)
     else:
         libraries = to_iterable(libraries)
 
     if pipelines is None:
-        pipelines = collect_pipelines(ROOT)
+        pipelines = collect_pipelines(_SEARCH_PREFIXES)
     else:
         pipelines = to_iterable(libraries)
 

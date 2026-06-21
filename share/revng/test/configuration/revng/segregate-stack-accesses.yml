@@ -16,7 +16,7 @@ commands:
 
       revng model override-by-name
         "$OUTPUT/context/model.yml"
-        ${SOURCE}.override.yml
+        ${COMMAND_ROOT}/${SOURCE}.override.yml
         > "$OUTPUT/context/model-tmp.yml";
       mv "$OUTPUT/context/model-tmp.yml" "$OUTPUT/context/model.yml";
 
@@ -25,6 +25,6 @@ commands:
       revng analyze --resume "$OUTPUT" detect-stack-size "$INPUT" -o /dev/null;
 
       revng artifact --resume "$OUTPUT" segregate-stack-accesses "$INPUT" |
-        revng opt -S | FileCheck ${SOURCE}.filecheck.ll;
+        revng opt -S | FileCheck ${COMMAND_ROOT}/${SOURCE}.filecheck.ll;
 
       revng artifact --resume "$OUTPUT" emit-c "$INPUT" -o /dev/null;

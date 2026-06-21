@@ -13,7 +13,7 @@ commands:
       cd "$$(temp -d)";
       revng2 project init --no-initial-auto-analysis "$$INPUT/functions";
       revng2 project analyze parse-binary -o /dev/null -- --use-pdb="$$INPUT/functions.pdb";
-      python3 "${SOURCES_ROOT}/share/revng/test/tests/abi/prepare-tested-model.py"
+      python3 "${COMMAND_ROOT}/share/revng/test/tests/abi/prepare-tested-model.py"
         "${ABI_NAME}" model.yml model.yml;
       revng2 project artifact emit-c-as-single-file -o decompiled.c.ptml;
       revng ptml decompiled.c.ptml -o decompiled.c

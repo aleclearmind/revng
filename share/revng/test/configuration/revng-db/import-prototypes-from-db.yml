@@ -24,4 +24,4 @@ commands:
       revng analyze import-prototypes-from-db /dev/null
         --model "$INPUT"
         | revng model opt -verify
-        | FileCheck "${SOURCE}"
+        | FileCheck "${COMMAND_ROOT}/${SOURCE}"

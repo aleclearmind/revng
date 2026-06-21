@@ -34,7 +34,13 @@ function wait_for_status() {
 }
 
 function start_postgres() {
-    initdb "$WORKDIR/data" &> "$WORKDIR/initdb.log"
+    # Pin server_encoding to UTF8 so psycopg-c decodes TEXT columns
+    # to str (the host locale may be C/POSIX inside a build sandbox,
+    # which would otherwise make initdb default to SQL_ASCII — and
+    # under SQL_ASCII psycopg-c hands back raw bytes for TEXT,
+    # breaking JSON serialization and TarInfo.name downstream).
+    initdb --encoding=UTF8 --locale=C.UTF-8 "$WORKDIR/data" \
+        &> "$WORKDIR/initdb.log"
 
     POSTGRES_PORT=$(available_port)
     postgres \

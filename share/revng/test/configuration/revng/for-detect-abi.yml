@@ -10,4 +10,4 @@ commands:
     suffix: /
     command: |-
       revng2 quick analyze --analyses=parse-binary,detect-abi "$INPUT" -- --abi-enforcement-level=no |
-        revng model compare "${SOURCE}.model.yml"
+        revng model compare "${COMMAND_ROOT}/${SOURCE}.model.yml"

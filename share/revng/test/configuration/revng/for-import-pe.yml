@@ -11,5 +11,5 @@ commands:
         filter: for-import-pe
     command: |-
       revng2 quick analyze --analyses=parse-binary "$INPUT1" -- --use-pdb="$INPUT2"
-        | revng model hard-purge "${SOURCE}.model.yml"
-        | revng model compare "${SOURCE}.model.yml"
+        | revng model hard-purge "${COMMAND_ROOT}/${SOURCE}.model.yml"
+        | revng model compare "${COMMAND_ROOT}/${SOURCE}.model.yml"

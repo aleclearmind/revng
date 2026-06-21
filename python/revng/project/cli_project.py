@@ -37,7 +37,14 @@ class CLIProject(Project):
 
     def upload_binary(self, binary_path: Union[str, Path]) -> str:
         binary_path = Path(binary_path)
-        shutil.copy(binary_path, self._cli_helper.project_directory / binary_path.name)
+        dst = self._cli_helper.project_directory / binary_path.name
+        # shutil.copy preserves the source's mode; if the source lives in
+        # a read-only filesystem (a Nix store path, a network share) the
+        # destination ends up read-only too, and a second upload_binary
+        # call cannot reopen it for write. Replace the destination atomically.
+        if dst.exists():
+            dst.unlink()
+        shutil.copy(binary_path, dst)
         with open(binary_path, "rb") as f:
             return hashlib.file_digest(f, "sha256").hexdigest()
 
