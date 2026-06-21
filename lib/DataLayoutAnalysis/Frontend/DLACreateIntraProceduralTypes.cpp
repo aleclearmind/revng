@@ -510,6 +510,15 @@ public:
           const Function *Callee = getCallee(C);
           revng_assert(not Callee or not Callee->isVarArg());
 
+          // WIP: skip if the call-site signature doesn't match the
+          // callee's. See `DLACreateInterProceduralTypes.cpp` for the
+          // full mechanism — `MakeSegmentRefPass` collapses an
+          // indirect call's `inttoptr (constant)` operand to a Function
+          // reference whose formal signature may be narrower than the
+          // call-site signature.
+          if (Callee and C->getFunctionType() != Callee->getFunctionType())
+            continue;
+
           // Add entry in SCEVToLayoutType map for return values of CallInst
           if (not C->getType()->isVoidTy()) {
             // Return values

@@ -156,6 +156,19 @@ bool TSBuilder::createInterproceduralTypes(llvm::Module &M,
           if (not Callee)
             continue;
 
+          // WIP: skip if the call-site signature doesn't match the
+          // callee's. `MakeSegmentRefPass` rewrites the constant address
+          // operand of indirect calls into `ptrtoint @Fn to i64`; once
+          // `getCallee` strips the cast, the Function it resolves to may
+          // have a narrower formal-arg list than the call site declares
+          // (e.g. on x86-64 calc the indirect call to `u0x401bdf` has 4
+          // args while `@local_0x401bdf_Code_x86_64` was inferred to
+          // take 2). The mismatch comes from a gcc-14 IPA-SRA split of
+          // musl's `pad()` into `pad.part.0`; orchestra's gcc-9.2 musl
+          // doesn't split, so the issue only surfaces on the nix port.
+          if (Call->getFunctionType() != Callee->getFunctionType())
+            continue;
+
           unsigned ArgNo = 0U;
           for (const Use &ArgUse : Call->args()) {
 
