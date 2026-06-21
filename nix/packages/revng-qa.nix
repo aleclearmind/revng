@@ -32,18 +32,81 @@ let
 
     unpackPhase = "true";
 
-    # nixpkgs's gcc-wrapper defaults to enabling `zerocallusedregs`,
-    # which adds `-fzero-call-used-regs=used-gpr`. That makes the
-    # compiler emit `xor %edx,%edx; xor %ecx,%ecx; …` before every
-    # `ret` (clearing non-callee-saved GPRs as a Spectre-style
-    # gadget hardening). revng's DetectABI then sees those zeroed
-    # registers as "written and never read at exit" and infers them
-    # as part of the return-value register set — c-operator-precedence
-    # decompiles to `struct_82 { offset_0; offset_8 }` instead of a
-    # plain `uint64_t`. Test binaries are inputs to the analyzer; we
-    # need their codegen to match what orchestra produces, which
-    # means no hardening fixups.
-    hardeningDisable = [ "zerocallusedregs" ];
+    # The host stdenv's setup-hook sets `NIX_HARDENING_ENABLE` to its
+    # full default, and every cross-compiler wrapper's setup-hook
+    # uses `: ${VAR=default}` semantics — i.e. it keeps the host's
+    # value rather than its own baked-in `defaultHardeningFlags`. So
+    # the only effective way to trim the cross-compile hardening is
+    # via `hardeningDisable` on this derivation.
+    #
+    # Drop:
+    #   - pic: `-fPIC` injects GOT round-trips for static globals on
+    #     x86-64 (`mov 0x0(%rip),%rax; movss (%rax),%xmm0`) where
+    #     orchestra's plain gcc-9.2.0 emits a direct RIP-relative
+    #     load. That extra dereference reshapes revng's CSV access
+    #     pattern enough for DetectABI to drop XMM-register inputs
+    #     and skip the helper inlining that produces
+    #     `@float32_compare`.
+    #   - stackclashprotection / stackprotector: extra prologue/
+    #     epilogue code; MIPS softfloat-conversion lifter
+    #     (cvt.w.d/mfc1) abandons the function before the conversion.
+    #   - fortify / fortify3: runtime checks around libc calls; we
+    #     don't link libc but the macro still alters inline expansions.
+    #   - zerocallusedregs: `xor %eax,%eax; xor %edx,%edx` before
+    #     every `ret`; DetectABI misreads the zeroed GPRs as live-out.
+    # Disable every hardening flag for the cross-toolchains *except*
+    # `pie`: the cross-compiler wrappers in `nativeBuildInputs` consult
+    # the bare `NIX_HARDENING_ENABLE` (host role), so trimming it strips
+    # every wrapper-injected flag (`-fPIC`, `-Wformat-security`,
+    # `-fno-strict-overflow`, …), letting binaries match what
+    # orchestra's gentoo-style gcc emits — which is what revng's
+    # per-arch lifters were written against.
+    #
+    # Historical note on `pic`: when the `revng-qa.compiled-stripped`
+    # rule used `llvm-objcopy --strip-all`, dropping `pic` on aarch64
+    # produced a binary with a BSS-only LOAD segment (`FileSize=0`,
+    # `offset=0xfe8`) that `llvm-objcopy` rejected — the ELF was
+    # spec-compliant (BSS doesn't need file bytes), but `llvm-objcopy`
+    # is over-strict. The rule now calls `${TRIPLE}objcopy` (GNU
+    # binutils) which accepts the segment, so `pic` can be dropped.
+    hardeningDisable = [
+      "bindnow"
+      "format"
+      "fortify"
+      "fortify3"
+      "nostrictaliasing"
+      "pacret"
+      "pic"
+      "relro"
+      "shadowstack"
+      "stackclashprotection"
+      "stackprotector"
+      "strictoverflow"
+      "trivialautovarinit"
+      "zerocallusedregs"
+    ];
+
+    # Our custom nixpkgs branch (`feature/improve-uclibc-ng`) bakes
+    # `-fno-omit-frame-pointer -mno-omit-leaf-frame-pointer` into
+    # every gcc-wrapper's `cc-cflags-before` for non-x86_32 / non-s390
+    # targets (see `pkgs/build-support/cc-wrapper/default.nix`).
+    # orchestra's plain gcc-9.2.0 emits a frame pointer by default at
+    # `-O0`, which is what revng's lifters were trained on — but we
+    # still want to flip it for the `revng-qa.compiled` targets here,
+    # for one orthogonal reason: our cross-toolchain's `libcCross`
+    # (musl) is built by the host gcc 14.3.0 rather than the cross
+    # gcc 9.2.0 (see `nix/packages/cross-toolchains.nix` — `wrapCCWith`
+    # wraps only the cross gcc binary, not `libcCross`). gcc-14's
+    # IPA-SRA splits musl's `pad()` into a `pad.part.0` clone with a
+    # narrower signature, and with frame pointer on, the resulting
+    # epilogue (`mov -0x8(%rbp), %rbx; leave; ret`) buries the last
+    # `%rax` write three instructions deep — DetectABI then drops the
+    # return value and the SegregateStackAccesses test fails. Omitting
+    # the frame pointer here gives a clean `pop %rbx; ret` epilogue
+    # that DetectABI handles. Override via `NIX_CFLAGS_COMPILE`, which
+    # the wrapper appends *after* `cc-cflags-before`, so this wins.
+    NIX_CFLAGS_COMPILE = "-fomit-frame-pointer";
+
 
     nativeBuildInputs =
       with pkgs;

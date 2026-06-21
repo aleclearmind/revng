@@ -13,7 +13,7 @@
 # | FileCheck $SOURCE`.
 #
 # Each component lives in its own store path, so we pass them all to
-# test-configure as repeated --install-path roots; revng's
+# test-configure as repeated --input-path roots; revng's
 # ResourceFinder learns the same list via REVNG_RESOURCES.
 let
   revngPythonEnv = revngPythonDependencies.overrideAttrs (old: {
@@ -23,12 +23,14 @@ let
     '';
   });
 
-  # Search list used both as --install-path roots for test-configure
+  # Search list used both as --input-path roots for test-configure
   # and as REVNG_RESOURCES for the running revng. Order matters: the
-  # first hit wins, and test-configure uses the first as the default
-  # SOURCES_ROOT for emitted commands.
+  # first hit wins. revng-test-assets owns the revng-db YMLs (split
+  # out of revng so test-fixture edits don't trigger a full revng
+  # rebuild); revng-qa owns the bulk of fixture sources.
   searchRoots = [
     revngPackages.revng-qa
+    revngPackages.revng-test-assets
     revng
     revngPackages.model-db
   ];
@@ -54,8 +56,9 @@ stdenv.mkDerivation {
   preInstall = ''
     python3 \
       ${revngPackages.revng-qa}/libexec/revng/test-configure \
-      "${revng}/share/revng/test/configuration/revng-db/"*.yml \
-      ${pkgs.lib.concatMapStringsSep " " (p: ''--install-path "${p}"'') searchRoots} \
+      "${revngPackages.revng-test-assets}/share/revng/test/configuration/revng-db/"*.yml \
+      --install-path "$PWD" \
+      ${pkgs.lib.concatMapStringsSep " " (p: ''--input-path "${p}"'') searchRoots} \
       --destination . \
       --target-type 'revng-db\..*'
     # test-configure emits scripts shebanged with `/usr/bin/env <X>`

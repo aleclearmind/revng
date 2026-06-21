@@ -6,8 +6,15 @@ ccacheStdenv.mkDerivation {
   src = pkgs.fetchFromGitHub {
     owner = "revng";
     repo = "llvm-project";
-    rev = "092c88c578306e6aa96cf28f9f4c4c33065ccce7";
-    hash = "sha256-dvXiG/Qkng9y/RbRgBLeSlgz9v/WNy+9Rz+NMifxZ0U=";
+    # Same commit as orchestra's `llvm` component (HEAD of
+    # github.com/revng/llvm-project at the time of writing). Adds a
+    # `GT` template parameter to po_ext_iterator / ipo_iterator /
+    # ReversePostOrderTraversal so callers (specifically MFP.h's use
+    # of GraphTraits<Inverse<RegionCFG<…>*>>) can drive the iterator
+    # with custom graph traits — without it, the legacy decompile
+    # path SIGABRTs at runtime in the Inverse case.
+    rev = "e828226b25c569d733c801ddf69f555e9b0bc50e";
+    hash = "sha256-K57CoXCk2eFluz6iS9PWCEQBGhPmCmlWpKUwetkrXU4=";
   };
 
   nativeBuildInputs = (with pkgs; [
@@ -15,6 +22,7 @@ ccacheStdenv.mkDerivation {
     ninja
     zlib
     libedit
+    zstd
   ]) ++ [ python ];
 
   cmakeFlags = [
@@ -34,7 +42,17 @@ ccacheStdenv.mkDerivation {
     "-DLLVM_ENABLE_ZLIB=ON"
     "-DLLVM_ENABLE_LIBEDIT=ON"
     "-DLLVM_ENABLE_LIBXML2=OFF"
-    "-DLLVM_ENABLE_ZSTD=OFF"
+    # Our llvm fork patches `IRReader.cpp` so that when the input
+    # buffer is a zstd frame (magic `28 b5 2f fd`) it transparently
+    # decompresses before handing to the bitcode/.ll parser. revng's
+    # `revng artifact … <emit-llvm-artifact>` writes the IR through
+    # zstd to keep the pipeline-cache containers compact, so a
+    # downstream `revng opt -S` sees a zstd stream rather than raw
+    # IR. With ZSTD off the patch is dead code, IRReader feeds the
+    # raw zstd bytes to the .ll parser, and opt dies with "expected
+    # top-level entity" on tests like
+    # `SegregateStackAccesses/dynamic_native/.../filecheck`.
+    "-DLLVM_ENABLE_ZSTD=ON"
 
     "-DBUILD_SHARED_LIBS=ON"
     "-DLLVM_ENABLE_PROJECTS=clang;mlir;lld"

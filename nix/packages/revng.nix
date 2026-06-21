@@ -35,12 +35,18 @@ stdenv.mkDerivation {
 
   # Filter the source so unrelated repo-level files (flake.nix,
   # result symlink, dev junk) don't re-hash revng on every edit.
+  # Also exclude share/revng/test/ — the test configuration YAMLs
+  # and fixture files live in the revng-test-assets derivation,
+  # so editing one of those doesn't invalidate revng's ~10 min
+  # build.
   src = pkgs.lib.cleanSourceWith {
     src = ../..;
     filter =
       path: type:
       let
         base = baseNameOf path;
+        prefix = toString ../..;
+        rel = pkgs.lib.removePrefix (prefix + "/") (toString path);
       in
       !(
         base == "flake.nix"
@@ -51,6 +57,8 @@ stdenv.mkDerivation {
         || pkgs.lib.hasSuffix ".iso" base
         || pkgs.lib.hasSuffix ".iso.1" base
         || base == ".claude"
+        || rel == "share/revng/test"
+        || pkgs.lib.hasPrefix "share/revng/test/" rel
       );
   };
 
@@ -80,8 +88,65 @@ stdenv.mkDerivation {
   # The repository has ~15 build/test scripts shebanged with
   # `#!/usr/bin/env <bash|python3>`; rewrite them at build time so
   # they don't depend on `/usr/bin/env` (absent inside the sandbox).
+  # Also re-enable the typescript bindings — the upstream HEAD commit
+  # them out behind the comment ``#add_subdirectory(typescript)`` so
+  # the orchestra-build doesn't try to `npm install` against the
+  # network. We replace that npm install with a copy of
+  # ${revngJavascriptDependencies}/node_modules in preBuild below.
   postPatch = ''
     patchShebangs --build .
+    substituteInPlace CMakeLists.txt \
+      --replace '#add_subdirectory(typescript)' 'add_subdirectory(typescript)'
+    # mass-testing-report builds a webpack bundle behind its own
+    # `npm install` + `npm run build` — both want network access we
+    # don't have in the sandbox, and the only output is a static
+    # report site test/revng doesn't consume. Skip its subdir entry
+    # so CMake never triggers either command.
+    substituteInPlace typescript/CMakeLists.txt \
+      --replace 'add_subdirectory(mass-testing-report)' ""
+    # pipeline-description.ts pulls in jquery typings whose transitive
+    # `@types/sizzle` dep isn't pinned in revngJavascriptDependencies.
+    # No in-tree test consumes `revng-pipeline-description`, so drop
+    # the corresponding typescript_module entry instead of widening
+    # the pnpm pin set just to satisfy the TS compiler.
+    substituteInPlace typescript/CMakeLists.txt \
+      --replace 'typescript_module(TARGET_NAME pipeline-description)' ""
+    # tsc defaults `types` to "every @types/* present in node_modules",
+    # which sucks the broken @types/jquery -> @types/sizzle chain into
+    # revng-model's compile too. Constrain to the types model.ts
+    # actually references.
+    substituteInPlace typescript/tsconfig.json \
+      --replace '"outDir": "dist"' '"outDir": "dist", "types": ["node"]'
+    # build-tupletree.sh silences npm pack and erases its working
+    # directory on any failure — make it verbose under nix so we can
+    # actually diagnose what went wrong.
+    substituteInPlace typescript/build-tupletree.sh \
+      --replace 'npm pack --silent > /dev/null' 'npm pack' \
+      --replace 'trap cleanup SIGINT SIGTERM ERR EXIT' '# cleanup trap removed for nix debugging' \
+      --replace 'set -euo pipefail' 'set -euxo pipefail' \
+      --replace 'npm --silent install --global --prefix=. "./$3.ts.tgz"' \
+                'mkdir -p "lib/node_modules/revng-$3"; tar -xzf "./$3.ts.tgz" -C "lib/node_modules/revng-$3" --strip-components=1'
+  '';
+
+  # typescript/CMakeLists.txt's ``npm install --silent`` step only
+  # fires when ``node_build/node_modules/.package-lock.json`` is
+  # missing. Pre-populate node_build/ from
+  # ${revngJavascriptDependencies}/node_modules (which already
+  # contains every dep listed in typescript/package.json) and touch
+  # the lock file so CMake's add_custom_command short-circuits.
+  # We deref symlinks (`-L`) and force the tree writable
+  # (`chmod -R u+w`) because `build-tupletree.sh` later does `cp -r`
+  # of this dir into a build-package staging area.
+  preBuild = ''
+    mkdir -p node_build
+    cp -aLT ${revngJavascriptDependencies}/node_modules \
+        node_build/node_modules
+    chmod -R u+w node_build/node_modules
+    touch node_build/node_modules/.package-lock.json
+    # `npm pack` (used by typescript/build-tupletree.sh) writes log
+    # files under $HOME/.npm; the sandbox's /homeless-shelter is r/o.
+    export HOME="$TMPDIR/home"
+    mkdir -p "$HOME"
   '';
 
   cmakeFlags = [

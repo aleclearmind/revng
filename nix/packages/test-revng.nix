@@ -13,30 +13,27 @@ let
     '';
   });
 
-  # Pre-merged test root. Many YML rules concatenate paths at
-  # shell-time via `"''${SOURCE}.model.yml"` / `"''${SOURCES_ROOT}/…"`,
-  # but the input `.S` lives in revng-qa while its expected
-  # `.S.model.yml` lives in revng (same relative subdir, different
-  # store paths). symlinkJoin produces one tree that overlays all
-  # three components so the shell-time concat resolves to a real
-  # file regardless of which derivation owns it. Cached as its own
-  # derivation, so test/revng iterations don't re-run lndir.
-  mergedTestRoot = pkgs.symlinkJoin {
-    name = "revng-test-merged-root";
-    paths = [
-      revngPackages.revng-qa
-      revngPackages."test/revng-qa"
-      revng
-      # api-set-schema tests look for $INSTALL_ROOT/share/roots/windows/
-      # <rootfs>/apisetschema.dll, so the windows rootfses ride along
-      # in the merged tree.
-      revngPackages."rootfs/windows-x86-64"
-      revngPackages."rootfs/windows-aarch64"
-      revngPackages."rootfs/windows-7-x86"
-      revngPackages."rootfs/windows-8-x86-64"
-      revngPackages."rootfs/windows-8-1-x86-64"
-    ];
-  };
+  # Search list passed to test-configure as repeated --input-path
+  # roots and to the running revng via REVNG_RESOURCES. With the
+  # ${COMMAND_ROOT}/${SOURCE} idiom in revng's YMLs, companion files
+  # (.filecheck, .model.yml, .cfg.yml, …) are looked up in the YAML's
+  # own root — and the YAMLs themselves now live in revng-test-assets
+  # (split out of revng so test-fixture edits don't trigger a full
+  # ~10 min revng rebuild). source .c/.S binaries are picked from
+  # revng-qa/ as before, and the windows rootfses ride along for
+  # api-set-schema tests that read share/roots/windows/<rootfs>/
+  # apisetschema.dll.
+  searchRoots = [
+    revngPackages.revng-qa
+    revngPackages."test/revng-qa"
+    revngPackages.revng-test-assets
+    revng
+    revngPackages."rootfs/windows-x86-64"
+    revngPackages."rootfs/windows-aarch64"
+    revngPackages."rootfs/windows-7-x86"
+    revngPackages."rootfs/windows-8-x86-64"
+    revngPackages."rootfs/windows-8-1-x86-64"
+  ];
 in
 stdenv.mkDerivation {
   name = "test/revng";
@@ -49,9 +46,15 @@ stdenv.mkDerivation {
     jq
     llvm_21
     lld_21
-    nodejs
     qemu
+    # zstdcat: used by share/revng/test/tests/pypeline-comparison/
+    # compare.sh.
+    zstd
   ]) ++ [
+    # Wrapped node interpreter — `require('revng-model')`, `s3rver`,
+    # `tsc`, etc. resolve without callers having to export NODE_PATH
+    # or assemble a search path themselves. Replaces pkgs.nodejs.
+    revngPackages.revng-test-node-env
     revngPackages.ninjaShellRule
     revng
     revngPackages."test/revng-qa"
@@ -74,15 +77,18 @@ stdenv.mkDerivation {
     python3 \
       ${revngPackages.revng-qa}/libexec/revng/test-configure \
       "${revngPackages.revng-qa}/share/revng/test/configuration/revng-qa/"*.yml \
-      "${revng}/share/revng/test/configuration/revng/"*.yml \
-      --install-path "${mergedTestRoot}" \
+      "${revngPackages.revng-test-assets}/share/revng/test/configuration/revng/"*.yml \
+      --install-path "$PWD" \
+      ${pkgs.lib.concatMapStringsSep " " (p: ''--input-path "${p}"'') searchRoots} \
       --destination . \
       --target-type 'revng\..*'
-    # test-configure writes inline scripts (filter.py, emit-and-check-c
-    # etc.) with `#!/usr/bin/env <interp>` shebangs that don't resolve
-    # in the sandbox. Hand-rolled patchShebangs equivalent — covers
-    # the four interpreter forms test-configure actually emits.
-    for _f in $(find . -maxdepth 2 -type f \( -name "*.py" -o -name "*.sh" -o -name "*.js" \)); do
+    # test-configure writes inline scripts with `#!/usr/bin/env <interp>`
+    # shebangs that don't resolve in the sandbox. Hand-rolled patchShebangs
+    # equivalent — covers the four interpreter forms test-configure emits.
+    # Includes extension-less scripts (e.g. `check-invalidations` from the
+    # invalidation YAMLs' `scripts:` block) by selecting on executability
+    # rather than filename.
+    for _f in $(find . -maxdepth 2 -type f -perm -u+x); do
       sed -i "1{
         s|^#!/usr/bin/env python3.*|#!$(command -v python3)|
         s|^#!/usr/bin/env bash.*|#!$(command -v bash)|
@@ -96,6 +102,11 @@ stdenv.mkDerivation {
     export PYPELINE_STORAGE_PROVIDER="local://?inline"
     export XDG_CACHE_HOME="$PWD/.cache"
     mkdir -p "$XDG_CACHE_HOME/.cache"
+
+    # `revng internal find-path` (used by db-invariants.yml and any
+    # other rule needing cross-root lookups) walks REVNG_RESOURCES in
+    # order — same list test-configure searches.
+    export REVNG_RESOURCES="${pkgs.lib.concatMapStringsSep ":" toString searchRoots}"
   '';
 
   # Shell functions exposed when you `nix develop .#"test/revng"`.
@@ -142,8 +153,12 @@ stdenv.mkDerivation {
     mkdir -p "$out/log"
     ninja -v -k0 all 2>&1 | tee "$out/log/ninja.log" || true
 
-    # Extract the list of FAILED targets for convenience.
-    grep -oE '^FAILED: [^ ]+' "$out/log/ninja.log" \
+    # Extract the list of FAILED targets for convenience. `grep -a`
+    # because some tests pipe binary output through tee (wine /
+    # dumpbin / gcc backtraces with raw bytes) and a default grep
+    # silently emits `Binary file ... matches` to stdout while
+    # writing nothing to the redirect.
+    grep -aoE '^FAILED: [^ ]+' "$out/log/ninja.log" \
       > "$out/log/failed-targets.txt" || true
     echo "test/revng: $(wc -l < $out/log/failed-targets.txt) failing target(s); see $out/log/"
   '';

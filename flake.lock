@@ -92,8 +92,8 @@
     "revng-qa": {
       "flake": false,
       "locked": {
-        "lastModified": 1781511263,
-        "narHash": "sha256-nOsFolpiklk/e7F+mnGZtYYzQP7O4yRqHZ4Za/uDFqI=",
+        "lastModified": 1781863535,
+        "narHash": "sha256-Oc3Y/SBharsMIhNuYChLKsO6nOJcID1xAMYNcn2+P1w=",
         "path": "/home/nix/revng-qa",
         "type": "path"
       },

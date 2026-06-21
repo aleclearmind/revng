@@ -28,8 +28,16 @@ let
         ;
       revngPackages = sp;
       revngClang = pkgs-2505.clang_16;
+      # cross-toolchains pins old GCC (9.x) to match what upstream
+      # revng-qa CI builds with. The primary `nixpkgs` input is a
+      # custom branch that has already dropped pre-13 gcc support, so
+      # route most cross-compilers through `nixpkgs-2505` (still ships
+      # gcc9.5.0). armv7a stays on the primary nixpkgs — nixpkgs-2505
+      # has an older uClibc-ng (1.0.52) that fails to cross-build for
+      # `armv7a-unknown-linux-uclibceabihf` with any gcc here.
       crossToolchains = import ./packages/cross-toolchains.nix {
-        inherit (inputs) nixpkgs;
+        nixpkgsOld = inputs.nixpkgs-2505;
+        nixpkgsArm = inputs.nixpkgs;
         inherit system;
       };
       msvc = sp.callPackage ./packages/msvc { };
@@ -65,6 +73,8 @@ let
       "macos/clang/arm" = (sp.callPackage ./packages/macos/clang.nix { }).arm;
       "macos/clang/aarch64" = (sp.callPackage ./packages/macos/clang.nix { }).aarch64;
       revng = sp.callPackage ./packages/revng.nix { };
+      revng-test-assets = sp.callPackage ./packages/revng-test-assets.nix { };
+      revng-test-node-env = sp.callPackage ./packages/revng-test-node-env.nix { };
       inherit (modelsPkgs) mkModels;
       "test/revng-qa/models" = sp.callPackage ./packages/test-revng-qa-models.nix { };
       model-db = sp.callPackage ./packages/model-db.nix { };

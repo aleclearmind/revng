@@ -15,7 +15,6 @@ stdenv.mkDerivation {
       # plus curl for the wait_for_status loop.
       postgresql
       curl
-      xorg.lndir
     ])
     ++ [
       revng
@@ -35,21 +34,20 @@ stdenv.mkDerivation {
 
   installPhase = ''
     mkdir -p "$out"
-    # Same merged-root pattern as test/revng so test-configure
-    # can resolve revng + revng-qa + test/revng-qa via a single
-    # --install-path.
-    mkdir merged-root
-    lndir -silent ${revngPackages.revng-qa} merged-root
-    lndir -silent ${revngPackages."test/revng-qa"} merged-root
-    lndir -silent ${revng} merged-root
 
     python3 \
       ${revngPackages.revng-qa}/libexec/revng/test-configure \
       "${revngPackages.revng-qa}/share/revng/test/configuration/revng-qa/"*.yml \
-      "${revng}/share/revng/test/configuration/revng-prss/"*.yml \
-      --install-path "$PWD/merged-root" \
+      "${revngPackages.revng-test-assets}/share/revng/test/configuration/revng-prss/"*.yml \
+      --install-path "$PWD" \
+      --input-path "${revngPackages.revng-qa}" \
+      --input-path "${revngPackages."test/revng-qa"}" \
+      --input-path "${revngPackages.revng-test-assets}" \
+      --input-path "${revng}" \
       --destination . \
       --target-type 'revng-prss\..*'
+
+    export REVNG_RESOURCES="${revngPackages.revng-qa}:${revngPackages."test/revng-qa"}:${revngPackages.revng-test-assets}:${revng}"
 
     # WIP: same patchShebangs / PYTHONPATH / PYPELINE_STORAGE_
     # PROVIDER / `shell` strip / timeout / sh symlink dance as

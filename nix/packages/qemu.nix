@@ -8,8 +8,19 @@ let
       src = pkgs.fetchFromGitHub {
         owner = "revng";
         repo = "qemu";
-        rev = "a4c2561e7ed21b16dcbad730e0a64f0e0389b6ac";
-        hash = "sha256-i1fipbBHkgJ0wgOsM4L/oRK/LRYKc+HQWNWVZxcMk8U=";
+        # Match orchestra (extracted from
+        # `.orchestra/binary-archives/origin/linux-x86-64/qemu-helpers/
+        # optimized/8035324…_*.hash-material.yml`). This is a downstream
+        # rev.ng patch series that, among other things, refactors the
+        # `comis_eflags[ret + 1]` array access inside `helper_(u)comi(s|s)d`
+        # into a callable `lookup_comis_eflags(int)` helper — keeping the
+        # GEP out of `helper_comisd`'s body so revng's
+        # `detect-uninlinable-helpers` doesn't demote the `revng_inline`
+        # tag and the lifted IR keeps `call @float64_compare` /
+        # `call @float32_compare` visible to the floating-point-x86-64
+        # FileCheck.
+        rev = "8035324196ca7f2d63c63deae1b0e38987573789";
+        hash = "sha256-mq4KJezaHWCOVV5qmxgbG+xLTEDzfP7tbchFtV5ocss=";
       };
 
       postPatch = ''
