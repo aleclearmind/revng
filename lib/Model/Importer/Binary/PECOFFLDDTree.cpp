@@ -128,8 +128,15 @@ public:
     SmallVector<std::string, 16> SearchPaths;
 
     // Register the directory of the binary itself
+    //
+    // Note: explicitly qualify `llvm::sys::path::append` — the
+    // `using namespace llvm::sys::path` directive above is shadowed by
+    // the unqualified `::append` in revng/ADT/STLExtras.h (it's a
+    // strictly better template match because no conversion is needed),
+    // which has the args swapped (`append(From, To)` instead of LLVM's
+    // `append(To, From)`).
     SmallString<16> Path;
-    append(Path, Entry.ImporterCanonicalPath);
+    llvm::sys::path::append(Path, Entry.ImporterCanonicalPath);
     remove_filename(Path);
     if (not Path.empty())
       SearchPaths.push_back(Path.str().str());
@@ -145,7 +152,7 @@ public:
 
     // Register the "Windows directory"
     Path.clear();
-    append(Path, StringRef("Windows"));
+    llvm::sys::path::append(Path, StringRef("Windows"));
     SearchPaths.push_back(Path.str().str());
 
 #if defined(__WIN32__) || defined(__MINGW32__) || defined(_WIN32)
@@ -154,7 +161,7 @@ public:
       if (auto MaybeLibraryPath = llvm::sys::Process::GetEnv("PATH")) {
         for (StringRef PathFromPath : split(*MaybeLibraryPath, ":")) {
           Path.clear();
-          append(Path, PathFromPath);
+          llvm::sys::path::append(Path, PathFromPath);
           SearchPaths.push_back(Path.str().str());
         }
       }

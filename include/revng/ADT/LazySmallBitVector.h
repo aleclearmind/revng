@@ -33,22 +33,25 @@ inline unsigned requiredBits(T Value) {
 template<typename T, typename A, typename B>
 concept is_either = std::is_same_v<T, A> or std::is_same_v<T, B>;
 
+// `__builtin_ffs[ll]` matches POSIX `ffs[ll]` semantics (1-indexed,
+// 0 for zero input) and avoids pulling `<strings.h>` — mingw has no
+// `ffs*()` declarations.
 template<typename IntT>
   requires is_either<IntT, unsigned, int>
 inline unsigned findFirstBit(IntT Value) {
-  return ffs(Value);
+  return __builtin_ffs(Value);
 }
 
 template<typename LongT>
   requires is_either<LongT, unsigned long, long>
 inline unsigned findFirstBit(LongT Value) {
-  return ffsl(Value);
+  return __builtin_ffsl(Value);
 }
 
 template<typename LongLongT>
   requires is_either<LongLongT, unsigned long long, long long>
 inline unsigned findFirstBit(LongLongT Value) {
-  return ffsll(Value);
+  return __builtin_ffsll(Value);
 }
 
 template<typename T>

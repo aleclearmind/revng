@@ -2,9 +2,29 @@
 // This file is distributed under the MIT License. See LICENSE.md for details.
 //
 
+#ifdef _WIN32
+// Windows lacks dlfcn.h — translation is disabled on Windows anyway
+// (libtcg is a Linux-only QEMU artifact), but to keep this TU
+// compilable we provide thin shims over LoadLibrary/GetProcAddress.
+// If translation is ever invoked on Windows, the dlopen of a `.so`
+// will fail at runtime, which is the correct behaviour.
+#include <windows.h>
+#define RTLD_LAZY 0
+static inline void *dlopen(const char *Path, int) {
+  return reinterpret_cast<void *>(LoadLibraryA(Path));
+}
+static inline void *dlsym(void *Handle, const char *Name) {
+  return reinterpret_cast<void *>(GetProcAddress(static_cast<HMODULE>(Handle),
+                                                 Name));
+}
+static inline int dlclose(void *Handle) {
+  return FreeLibrary(static_cast<HMODULE>(Handle)) ? 0 : -1;
+}
+#else
 extern "C" {
 #include "dlfcn.h"
 }
+#endif
 
 #include "revng/Lift/LibTcg.h"
 #include "revng/Support/ResourceFinder.h"

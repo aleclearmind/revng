@@ -20,7 +20,27 @@
 #include "revng/Support/PathList.h"
 
 #include "Types.h"
-#include "sanitizer/asan_interface.h"
+// `sanitizer/asan_interface.h` is only available when ASan-enabled
+// compiler-rt headers are on the include path — mingw doesn't ship
+// them. Gate the include and provide no-op fallbacks so the file
+// still compiles in non-ASan builds (the poison/unpoison annotations
+// are only meaningful under ASan anyway).
+#if defined(__has_include)
+#  if __has_include("sanitizer/asan_interface.h")
+#    include "sanitizer/asan_interface.h"
+#  endif
+#endif
+#ifndef ASAN_POISON_MEMORY_REGION
+#  define ASAN_POISON_MEMORY_REGION(addr, size) ((void)0)
+#endif
+#ifndef ASAN_UNPOISON_MEMORY_REGION
+#  define ASAN_UNPOISON_MEMORY_REGION(addr, size) ((void)0)
+#endif
+// Windows has no SIGTRAP — fall back to SIGABRT so the "break at
+// command" debugging hook still aborts (the closest equivalent).
+#if defined(_WIN32) && !defined(SIGTRAP)
+#  define SIGTRAP SIGABRT
+#endif
 
 using ArgumentRef = const revng::tracing::Argument &;
 using ArgumentsRef = const llvm::ArrayRef<revng::tracing::Argument>;

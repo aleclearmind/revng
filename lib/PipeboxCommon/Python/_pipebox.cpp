@@ -3,6 +3,16 @@
 //
 
 #include <csignal>
+// nanobind/exception_shim.h uses `fprintf(stderr, ...)` without
+// including `<cstdio>` itself — works on glibc which pulls it in
+// transitively, but mingw doesn't, so pull it in here.
+#include <cstdio>
+
+// mingw's `<csignal>` doesn't typedef `sighandler_t`. Provide it
+// ourselves; the signature matches glibc's.
+#if defined(_WIN32) && !defined(__sighandler_t)
+using sighandler_t = void (*)(int);
+#endif
 
 #include "nanobind/nanobind.h"
 #include "nanobind/stl/optional.h"

@@ -76,7 +76,10 @@ static void setMetadata(VariableManager &Variables,
 
       // If necessary, move on to the next field
       int64_t AvailableSize = CSVSize - OffsetInField;
-      RemainingSize = std::max(0L, RemainingSize - AvailableSize);
+      // Use `int64_t(0)` rather than `0L` — on LLP64 (Windows mingw)
+      // `long` is 32 bits and `std::max`'s template arg deduction
+      // fails against the `int64_t` second argument.
+      RemainingSize = std::max(int64_t(0), RemainingSize - AvailableSize);
       Offset = 0;
     }
   }
