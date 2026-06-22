@@ -6,6 +6,15 @@ cmake_minimum_required(VERSION 3.15.0)
 
 project(revng)
 
+# Cross-compile knob. When ON, skip any build step that runs a
+# revng/python artifact produced by THIS build (helper-module
+# annotation, doc generation, clang-format config, tests). The
+# resulting tree has the C++ libraries / executables and python
+# bindings, but not the artifacts that require running revng to
+# generate them.
+option(REVNG_CROSS_BUILD
+  "Cross-compile: skip steps that run build-host artifacts" OFF)
+
 set(CMAKE_INSTALL_RPATH "${CMAKE_INSTALL_PREFIX}/lib;${CMAKE_INSTALL_PREFIX}/lib/revng/analyses")
 
 include(share/revng/cmake/Common.cmake)
@@ -195,6 +204,7 @@ set(SUPPORT_MODULES_CONFIG_trace "-DTRACE")
 # A set of llvm modules that contain all the known helpers.
 set(HELPER_MODULE_LIST, "")
 
+if(NOT REVNG_CROSS_BUILD)
 foreach(
   ARCH
   aarch64
@@ -320,20 +330,23 @@ foreach(
     NAME declarations-only PASSES helpers-module-to-declarations globaldce
     strip-dead-debug-info)
 endforeach()
+endif()  # REVNG_CROSS_BUILD
 
 # Custom command to create .clang-format file from revng-check-conventions
-add_custom_command(
-  OUTPUT "${CMAKE_BINARY_DIR}/share/revng/.clang-format"
-  DEPENDS "${CMAKE_SOURCE_DIR}/libexec/revng/check-conventions"
-          "${CMAKE_SOURCE_DIR}/share/revng/clang-format-style-file.yml"
-          copy_share copy_libexec
-  COMMAND
-    python3 "${CMAKE_BINARY_DIR}/libexec/revng/check-conventions" ARGS
-    --print-clang-format-config >
-    "${CMAKE_BINARY_DIR}/share/revng/.clang-format")
+if(NOT REVNG_CROSS_BUILD)
+  add_custom_command(
+    OUTPUT "${CMAKE_BINARY_DIR}/share/revng/.clang-format"
+    DEPENDS "${CMAKE_SOURCE_DIR}/libexec/revng/check-conventions"
+            "${CMAKE_SOURCE_DIR}/share/revng/clang-format-style-file.yml"
+            copy_share copy_libexec
+    COMMAND
+      python3 "${CMAKE_BINARY_DIR}/libexec/revng/check-conventions" ARGS
+      --print-clang-format-config >
+      "${CMAKE_BINARY_DIR}/share/revng/.clang-format")
 
-add_custom_target(clang-format-dot-file ALL
-                  DEPENDS "${CMAKE_BINARY_DIR}/share/revng/.clang-format")
+  add_custom_target(clang-format-dot-file ALL
+                    DEPENDS "${CMAKE_BINARY_DIR}/share/revng/.clang-format")
+endif()
 
 #
 # libexec/revng
@@ -384,6 +397,7 @@ configure_file(mkdocs.yml "${CMAKE_BINARY_DIR}" COPYONLY)
 set(HTML_DOCS_PATH "${CMAKE_CURRENT_BINARY_DIR}/share/doc/revng/html")
 find_program(MKDOCS NAMES mkdocs)
 
+if(NOT REVNG_CROSS_BUILD)
 add_custom_command(
   OUTPUT share/doc/revng/html/404.html
   DEPENDS mkdocs.yml
@@ -433,27 +447,34 @@ add_custom_command(
   COMMAND mv -T mkdocs-output "${HTML_DOCS_PATH}"
   COMMENT "Generating mkdocs")
 add_custom_target(mkdocs ALL DEPENDS share/doc/revng/html/404.html)
+endif()  # REVNG_CROSS_BUILD
 
 #
 # Gather helper names
 #
-add_custom_command(
-  OUTPUT "${CMAKE_BINARY_DIR}/share/revng/helper-list.csv"
-  COMMAND
-    ${CMAKE_COMMAND} -E env "PATH=${LLVM_DIR}/../../../libexec:$ENV{PATH}"
-    bash ${CMAKE_SOURCE_DIR}/scripts/extract-helper-names.sh ${HELPER_MODULE_LIST} >
-    "${CMAKE_BINARY_DIR}/share/revng/helper-list.csv"
-  DEPENDS copy_share ${HELPER_MODULE_LIST})
-add_custom_target(helper-list ALL
-                  DEPENDS "${CMAKE_BINARY_DIR}/share/revng/helper-list.csv")
+if(NOT REVNG_CROSS_BUILD)
+  add_custom_command(
+    OUTPUT "${CMAKE_BINARY_DIR}/share/revng/helper-list.csv"
+    COMMAND
+      ${CMAKE_COMMAND} -E env "PATH=${LLVM_DIR}/../../../libexec:$ENV{PATH}"
+      bash ${CMAKE_SOURCE_DIR}/scripts/extract-helper-names.sh ${HELPER_MODULE_LIST} >
+      "${CMAKE_BINARY_DIR}/share/revng/helper-list.csv"
+    DEPENDS copy_share ${HELPER_MODULE_LIST})
+  add_custom_target(helper-list ALL
+                    DEPENDS "${CMAKE_BINARY_DIR}/share/revng/helper-list.csv")
+endif()
 
 #
 # Proceed to subdirectories
 #
-add_subdirectory(docs)
+if(NOT REVNG_CROSS_BUILD)
+  add_subdirectory(docs)
+endif()
 add_subdirectory(include)
 add_subdirectory(lib)
 add_subdirectory(python)
-add_subdirectory(tests)
+if(NOT REVNG_CROSS_BUILD)
+  add_subdirectory(tests)
+endif()
 add_subdirectory(tools)
 #add_subdirectory(typescript)

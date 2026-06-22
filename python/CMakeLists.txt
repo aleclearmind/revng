@@ -278,19 +278,36 @@ add_custom_command(
   DEPENDS
     "${CMAKE_BINARY_DIR}/${PYTHON_INSTALL_PATH}/${PYTHON_GENERATED_MODEL_PATH}")
 
-add_custom_command(
-  COMMAND
-    env "PYTHONPATH=${CMAKE_BINARY_DIR}/${PYTHON_INSTALL_PATH}"
-    bash "${CMAKE_SOURCE_DIR}/scripts/generate-project-mixins.sh"
-    "${CMAKE_SOURCE_DIR}/python/revng/project/model/mixins.py.tpl"
-    "${CMAKE_BINARY_DIR}/${PYTHON_INSTALL_PATH}/revng/project/model/mixins.py"
-  OUTPUT
-    "${CMAKE_BINARY_DIR}/${PYTHON_INSTALL_PATH}/revng/project/model/mixins.py"
-  DEPENDS revng-all-binaries _pipebox
-          "${CMAKE_SOURCE_DIR}/scripts/generate-project-mixins.py"
-          "${CMAKE_SOURCE_DIR}/scripts/generate-project-mixins.sh"
-          "${CMAKE_SOURCE_DIR}/python/revng/project/model/mixins.py.tpl"
-  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+if(REVNG_CROSS_BUILD)
+  # The real recipe needs `_pipebox` loaded into the build-host
+  # interpreter, which can't happen when the .so is actually a Windows
+  # .dll. Drop a placeholder mixins.py so the wheel manifest still has
+  # something to ship.
+  add_custom_command(
+    COMMAND
+      "${CMAKE_COMMAND}" -E make_directory
+      "${CMAKE_BINARY_DIR}/${PYTHON_INSTALL_PATH}/revng/project/model"
+    COMMAND
+      "${CMAKE_COMMAND}" -E touch
+      "${CMAKE_BINARY_DIR}/${PYTHON_INSTALL_PATH}/revng/project/model/mixins.py"
+    OUTPUT
+      "${CMAKE_BINARY_DIR}/${PYTHON_INSTALL_PATH}/revng/project/model/mixins.py"
+    WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+else()
+  add_custom_command(
+    COMMAND
+      env "PYTHONPATH=${CMAKE_BINARY_DIR}/${PYTHON_INSTALL_PATH}"
+      bash "${CMAKE_SOURCE_DIR}/scripts/generate-project-mixins.sh"
+      "${CMAKE_SOURCE_DIR}/python/revng/project/model/mixins.py.tpl"
+      "${CMAKE_BINARY_DIR}/${PYTHON_INSTALL_PATH}/revng/project/model/mixins.py"
+    OUTPUT
+      "${CMAKE_BINARY_DIR}/${PYTHON_INSTALL_PATH}/revng/project/model/mixins.py"
+    DEPENDS revng-all-binaries _pipebox
+            "${CMAKE_SOURCE_DIR}/scripts/generate-project-mixins.py"
+            "${CMAKE_SOURCE_DIR}/scripts/generate-project-mixins.sh"
+            "${CMAKE_SOURCE_DIR}/python/revng/project/model/mixins.py.tpl"
+    WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+endif()
 
 add_custom_command(
   COMMAND
