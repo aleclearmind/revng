@@ -24,11 +24,14 @@
 #include "revng/Pipes/TaggedFunctionKind.h"
 
 using namespace llvm;
-using std::tuple;
 
 class InvokeIsolatedFunctionsImpl {
 private:
-  using FunctionInfo = tuple<const model::Function *, BasicBlock *, Function *>;
+  struct FunctionInfo {
+    const model::Function *ModelFunction = nullptr;
+    BasicBlock *Entry = nullptr;
+    Function *LLVMFunction = nullptr;
+  };
   using FunctionMap = std::map<model::Function::Key, FunctionInfo>;
 
 private:
@@ -63,8 +66,8 @@ public:
       MetaAddress JumpTarget = getBasicBlockJumpTarget(&BB);
       auto It = Map.find(JumpTarget);
       if (It != Map.end()) {
-        revng_assert(get<1>(It->second) == nullptr);
-        get<1>(It->second) = &BB;
+        revng_assert(It->second.Entry == nullptr);
+        It->second.Entry = &BB;
       }
     }
   }
