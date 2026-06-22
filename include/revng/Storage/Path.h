@@ -48,11 +48,16 @@ class FilePath : public PathBase {
 public:
   using PathBase::PathBase;
 
+  // The methods below are named `forStdin` / `forStdout` rather than
+  // `stdin` / `stdout` because MSVCRT defines those as object-like
+  // macros (expanding to `__acrt_iob_func(N)`), which would mangle
+  // the declarations under mingw.
+
   /// Utility function to get a FilePath that can read stdin
-  static FilePath stdin() { return FilePath(nullptr, "stdin"); }
+  static FilePath forStdin() { return FilePath(nullptr, "stdin"); }
 
   /// Utility function to get a FilePath that can write stdout
-  static FilePath stdout() { return FilePath(nullptr, "stdout"); }
+  static FilePath forStdout() { return FilePath(nullptr, "stdout"); }
 
   /// Utility function to get a FilePath on the local filesystem
   static FilePath fromLocalStorage(llvm::StringRef Path);

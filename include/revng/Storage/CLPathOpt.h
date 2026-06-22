@@ -70,8 +70,8 @@ using PathImplOpt = llvm::cl::opt<PathImpl<DG>, false, PathImplParser<DG>>;
 } // namespace detail
 
 // cl::opts for input and output revng::FilePaths
-using InputPathOpt = detail::PathImplOpt<FilePath::stdin>;
-using OutputPathOpt = detail::PathImplOpt<FilePath::stdout>;
+using InputPathOpt = detail::PathImplOpt<FilePath::forStdin>;
+using OutputPathOpt = detail::PathImplOpt<FilePath::forStdout>;
 
 } // namespace revng
 
