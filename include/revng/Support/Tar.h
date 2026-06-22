@@ -54,7 +54,9 @@ public:
   }
 
 private:
-  static long
+  // `la_ssize_t` matches libarchive's archive_write_callback return type
+  // — it's `ssize_t` (long) on Linux but `long long` on Windows LLP64.
+  static la_ssize_t
   archiveWrite(archive *Ptr, void *ClassPtr, const void *Data, size_t Size);
 };
 

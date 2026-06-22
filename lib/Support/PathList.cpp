@@ -2,10 +2,19 @@
 // This file is distributed under the MIT License. See LICENSE.md for details.
 //
 
+#ifdef _WIN32
+// Loaded-module enumeration uses EnumProcessModules / GetModuleFileNameA
+// (psapi) — mingw has no dlfcn.h / link.h, and dl_iterate_phdr is a
+// glibc extension regardless. Library is linked via `-lpsapi` from
+// the CMake target.
+#include <windows.h>
+#include <psapi.h>
+#else
 extern "C" {
 #include "dlfcn.h"
 #include "link.h"
 }
+#endif
 
 #include <map>
 #include <set>
@@ -32,6 +41,7 @@ struct Resources {
 
 llvm::ManagedStatic<Resources> Resources;
 
+#ifndef _WIN32
 extern "C" {
 static int
 dlIteratePhdrCallback(struct dl_phdr_info *Info, size_t Size, void *Data) {
@@ -50,6 +60,29 @@ dlIteratePhdrCallback(struct dl_phdr_info *Info, size_t Size, void *Data) {
   return 0;
 }
 }
+#else
+// Windows uses EnumProcessModules instead of dl_iterate_phdr — same
+// effect (build the loaded-library → full-path map keyed by the basename
+// without its suffix), just a different OS API.
+static void enumerateLoadedModulesWin32() {
+  using llvm::StringRef;
+  HANDLE Proc = GetCurrentProcess();
+  HMODULE Modules[1024];
+  DWORD Needed = 0;
+  if (!EnumProcessModules(Proc, Modules, sizeof(Modules), &Needed))
+    return;
+  unsigned Count = Needed / sizeof(HMODULE);
+  for (unsigned I = 0; I < Count; ++I) {
+    char Buf[MAX_PATH];
+    if (!GetModuleFileNameA(Modules[I], Buf, sizeof(Buf)))
+      continue;
+    StringRef FullPath(Buf);
+    StringRef Name = llvm::sys::path::filename(FullPath);
+    Resources->LibrariesFullPath[Name.rsplit(".dll").first.str()] = FullPath
+                                                                      .str();
+  }
+}
+#endif
 
 static void initialize() {
   if (not Resources->FirstCall)
@@ -57,7 +90,11 @@ static void initialize() {
 
   Resources->FirstCall = false;
 
+#ifdef _WIN32
+  enumerateLoadedModulesWin32();
+#else
   dl_iterate_phdr(dlIteratePhdrCallback, nullptr);
+#endif
 
   using namespace llvm::sys::path;
   constexpr const char *MainLibrary = "librevngSupport";

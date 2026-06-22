@@ -64,6 +64,12 @@ llvm_map_components_to_libnames(
 target_link_libraries(revngSupport z zstd ${LibArchive_LIBRARIES}
                       ${LLVM_LIBRARIES})
 
+# PathList.cpp uses EnumProcessModules from psapi on Windows for the
+# `dl_iterate_phdr` equivalent.
+if(WIN32)
+  target_link_libraries(revngSupport psapi)
+endif()
+
 target_include_directories(revngSupport INTERFACE $<INSTALL_INTERFACE:include/>)
 
 # revngSupport has a dependency to the generated model files because of revng.h

@@ -112,10 +112,10 @@ void TarWriter::addMember(llvm::StringRef Filename,
   }
 }
 
-long TarWriter::archiveWrite(archive *Ptr,
-                             void *ClassPtr,
-                             const void *Data,
-                             size_t Size) {
+la_ssize_t TarWriter::archiveWrite(archive *Ptr,
+                                   void *ClassPtr,
+                                   const void *Data,
+                                   size_t Size) {
   TarWriter *Class = static_cast<TarWriter *>(ClassPtr);
   Class->OS.write(static_cast<const char *>(Data), Size);
   return Size;
