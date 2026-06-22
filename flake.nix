@@ -4,8 +4,13 @@
 
     nixpkgs-2505.url = "https://github.com/NixOS/nixpkgs/archive/refs/heads/nixos-25.05-small.tar.gz";
 
+    # WIP: local pyproject-nix on `feature/windows-pep508`. Adds
+    # Windows branches to lib/pep508.nix's PEP 508 environment marker
+    # mapping (sys_platform="win32", platform_machine="AMD64", …) so
+    # cross-mingw venvs evaluate without "Unsupported platform" throws.
+    # Switch back to github: once the patch is upstreamed.
     pyproject-nix = {
-      url = "github:pyproject-nix/pyproject.nix";
+      url = "path:/home/nix/pyproject-nix";
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
@@ -31,6 +36,13 @@
     # *.yml files. Switch back to a github: URL once upstreamed.
     revng-qa.url = "path:/home/nix/revng-qa";
     revng-qa.flake = false;
+
+    # WIP: local revng-qemu tree on a `feature/windows` branch, where
+    # we apply Windows-port commits on top of orchestra's pinned
+    # 8035324… revision. Switch back to fetchFromGitHub once the
+    # branch is pushed and we're confident in the commits.
+    qemu.url = "path:/home/nix/qemu";
+    qemu.flake = false;
   };
 
   outputs =

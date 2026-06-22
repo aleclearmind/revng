@@ -55,6 +55,40 @@ let
       revngPythonDependencies = sp.callPackage ./packages/revng-python-dependencies { };
       revngJavascriptDependencies = sp.callPackage ./packages/revng-js-dependencies { };
       llvm = sp.callPackage ./packages/llvm.nix { };
+      # Shared `pkgsCross.mingwW64` with libcxxStdenv overlay. All
+      # `windows/*` C++ derivations callPackage with this in scope so
+      # they share one overlay instance (without it each consumer's
+      # inline overlay creates a fresh scope and nix rebuilds boost /
+      # llvm / clang-wrapper per consumer).
+      windowsCross = sp.callPackage ./packages/windows-cross.nix { };
+      "windows/llvm" = sp.callPackage ./packages/windows-llvm-importlib-fix.nix {
+        # Cheap post-processing of `windows/llvm-built` that rewrites
+        # `lib/*.dll.a` so downstream `ld.lld` accepts them — see the
+        # file for the full backstory.
+        windowsLlvm = sp."windows/llvm-built";
+      };
+      "windows/llvm-built" = sp.callPackage ./packages/llvm-windows.nix { };
+      "windows/qemu" = sp.callPackage ./packages/qemu-windows.nix { };
+      "windows/boost" = sp.callPackage ./packages/boost-windows.nix { };
+      "windows/aws-sdk-cpp" = sp.callPackage ./packages/aws-sdk-cpp-windows.nix { };
+      "windows/python" = sp.callPackage ./packages/python-windows.nix { };
+      "windows/nanobind" = sp.callPackage ./packages/nanobind-windows.nix { };
+      "windows/revng-python-dependencies" =
+        sp.callPackage ./packages/revng-python-dependencies-windows.nix { };
+      "windows/revng" = sp.callPackage ./packages/revng-windows.nix {
+        windowsPython = sp."windows/python";
+        windowsLlvm = sp."windows/llvm";
+        windowsQemu = sp."windows/qemu";
+        windowsBoost = sp."windows/boost";
+        windowsAwsSdkCpp = sp."windows/aws-sdk-cpp";
+        windowsNanobind = sp."windows/nanobind";
+      };
+      # Pure-C deps cross-compile cleanly from nixpkgs out of the box;
+      # no libcxxStdenv overlay needed since none of them touch C++.
+      "windows/zlib" = pkgs.pkgsCross.mingwW64.zlib;
+      "windows/zstd" = pkgs.pkgsCross.mingwW64.zstd;
+      "windows/sqlite" = pkgs.pkgsCross.mingwW64.sqlite;
+      "windows/libarchive" = pkgs.pkgsCross.mingwW64.libarchive;
       clangRelease = sp.callPackage ./packages/clang-release.nix { };
       inherit (qemuPkgs) qemu qemuHelpers;
       nanobind = sp.callPackage ./packages/nanobind.nix { };

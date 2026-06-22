@@ -76,17 +76,27 @@
         ]
       },
       "locked": {
-        "lastModified": 1764134915,
-        "narHash": "sha256-xaKvtPx6YAnA3HQVp5LwyYG1MaN4LLehpQI8xEdBvBY=",
-        "owner": "pyproject-nix",
-        "repo": "pyproject.nix",
-        "rev": "2c8df1383b32e5443c921f61224b198a2282a657",
-        "type": "github"
+        "lastModified": 1782076667,
+        "narHash": "sha256-9Yb1ofDJx98ix2MhRIQuYbXYe9Ga2ZE89M0KlBqzF2s=",
+        "path": "/home/nix/pyproject-nix",
+        "type": "path"
       },
       "original": {
-        "owner": "pyproject-nix",
-        "repo": "pyproject.nix",
-        "type": "github"
+        "path": "/home/nix/pyproject-nix",
+        "type": "path"
+      }
+    },
+    "qemu": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1782061731,
+        "narHash": "sha256-782h9oO9Vsm2up3dYQD0wj5iUPGNtCn8HMl786nC+q0=",
+        "path": "/home/nix/qemu",
+        "type": "path"
+      },
+      "original": {
+        "path": "/home/nix/qemu",
+        "type": "path"
       }
     },
     "revng-qa": {
@@ -108,6 +118,7 @@
         "nixpkgs-2505": "nixpkgs-2505",
         "pyproject-build-systems": "pyproject-build-systems",
         "pyproject-nix": "pyproject-nix",
+        "qemu": "qemu",
         "revng-qa": "revng-qa",
         "uv2nix": "uv2nix",
         "uv2nix_hammer_overrides": "uv2nix_hammer_overrides"
