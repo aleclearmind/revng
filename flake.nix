@@ -39,6 +39,6 @@
       system = "x86_64-linux";
     in
     {
-      packages.${system} = import ./nix { inherit self inputs system; };
+      packages.${system} = import ./nix-configuration { inherit self inputs system; };
     };
 }
