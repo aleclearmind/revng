@@ -17,6 +17,7 @@ let
 in
 stdenv.mkDerivation {
   name = "macos-sdk";
+  usePrivateCache = true;
   src = sdkTarball;
   unpackPhase = "true";
   installPhase = ''

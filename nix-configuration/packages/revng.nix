@@ -51,7 +51,9 @@ stdenv.mkDerivation {
       !(
         base == "flake.nix"
         || base == "flake.lock"
-        || base == "nix"
+        || base == "nix"                # ./nix wrapper script (nix-portable launcher)
+        || base == "nix-configuration"  # ./nix-configuration/ (this tree)
+        || base == ".nix"               # ./.nix/ if user picks repo-local mode
         || base == "result"
         || base == "TODO"
         || pkgs.lib.hasSuffix ".iso" base

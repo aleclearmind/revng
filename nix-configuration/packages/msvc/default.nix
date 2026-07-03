@@ -2,6 +2,7 @@
 
 {
   pkgs,
+  fetchPrivateUrl,
 }:
 let
   lib = pkgs.lib;
@@ -19,7 +20,7 @@ let
       allPackages = trace (packages: "We have ${size packages} packages") (
         (builtins.fromJSON (
           builtins.readFile (
-            pkgs.fetchurl {
+            fetchPrivateUrl {
               url = url;
               hash = hash;
             }
@@ -166,6 +167,11 @@ let
     (pkgs.stdenvNoCC.mkDerivation {
       pname = triple;
       version = "1.0";
+
+      # Every toolchain output embeds Microsoft VC / SDK binaries, so
+      # route these to the private binary cache rather than the public
+      # one.
+      usePrivateCache = true;
 
       # Required for ntlm_auth
       buildInputs = [ pkgs.samba ];
@@ -323,7 +329,7 @@ let
           downloads = builtins.map (entry: {
             component = entry.id;
             name = entry.filename;
-            path = pkgs.fetchurl {
+            path = fetchPrivateUrl {
               url = entry.url;
               hash = entry.sha256;
             };
@@ -425,7 +431,7 @@ let
 
     useDebugInfo = true;
 
-    src = pkgs.fetchurl {
+    src = fetchPrivateUrl {
       url = "https://archive.org/download/vsp600enu/VSP600ENU1.iso";
       hash = "sha256-JjTKRIFjU5h4t8QFwR7zWb8N3E8F0muVdeC5+Bn2Qn8=";
     };
@@ -455,7 +461,7 @@ let
 
     useDebugInfo = false;
 
-    src = pkgs.fetchurl {
+    src = fetchPrivateUrl {
       url = "https://archive.org/download/microsoft-visual-studio-.-net-2003-professional-disc-1/Microsoft%20Visual%20Studio%20.NET%202003%20Professional%20-%20Disc%201.iso";
       hash = "sha256-oCjJiZ6avBb57fcJoPrNyP02z/d1JsPtMnxGXGxIgzc=";
     };
@@ -493,7 +499,7 @@ let
 
     useDebugInfo = true;
 
-    src = pkgs.fetchurl {
+    src = fetchPrivateUrl {
       url = "https://archive.org/download/vs2010_202102/vs2010.zip";
       hash = "sha256-Hx1zM9ZMui1H52gkW8eqUb9MCp1B/T9OQUkU/Xn5VyA=";
     };

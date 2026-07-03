@@ -25,6 +25,9 @@ let
     in
     stdenv.mkDerivation {
       name = "win32metadata-pdbs-${name}";
+      # PDBs are compiled against the vc19 VC/SDK headers, so their
+      # $out embeds Microsoft-copyrighted material.
+      usePrivateCache = true;
       unpackPhase = "true";
       nativeBuildInputs = [
         llvm

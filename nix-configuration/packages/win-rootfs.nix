@@ -1,4 +1,4 @@
-{ pkgs, stdenv, lib }:
+{ pkgs, stdenv, lib, fetchPrivateUrl }:
 let
   # ----------------------------------------------------------------
   # Windows rootfs derivations. revng's api-set-schema test does:
@@ -36,6 +36,8 @@ let
     { name, imageUrl, outputHash }:
     stdenv.mkDerivation {
       name = "rootfs-${name}";
+      # apisetschema.dll is a Microsoft binary; keep it off the public cache.
+      usePrivateCache = true;
       outputHashAlgo = "sha256";
       outputHashMode = "recursive";
       inherit outputHash;
@@ -62,13 +64,15 @@ let
   mkWinWimRootfs =
     { name, isoUrl, isoHash, wimPath, outputHash }:
     let
-      iso = pkgs.fetchurl {
+      iso = fetchPrivateUrl {
         url = isoUrl;
         sha256 = isoHash;
       };
     in
     stdenv.mkDerivation {
       name = "rootfs-${name}";
+      # apisetschema.dll is a Microsoft binary; keep it off the public cache.
+      usePrivateCache = true;
       outputHashAlgo = "sha256";
       outputHashMode = "recursive";
       inherit outputHash;

@@ -40,6 +40,7 @@ let
         nixpkgsArm = inputs.nixpkgs;
         inherit system;
       };
+      fetchPrivateUrl = sp.callPackage ./packages/fetch-private-url.nix { };
       msvc = sp.callPackage ./packages/msvc { };
       # Expose each MSVC triple as its own attr so callers can do
       # `nix build .#"toolchain/win32-vc16"` etc. Names mirror
@@ -143,6 +144,7 @@ removeAttrs scope [
   "inputs"
   "msvc"
   "mkModels"
+  "fetchPrivateUrl"
   "crossToolchains"
   "revngPackages"
 ]
