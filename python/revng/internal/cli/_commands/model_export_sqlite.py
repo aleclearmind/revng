@@ -18,6 +18,29 @@ _Dumper = yaml.CSafeDumper
 
 TYPE_DEFINITION_REFERENCE_PATTERN = re.compile(r"/TypeDefinitions/(\d+)-(\w+)")
 
+TRANSFERABLE_SYMBOL_FIELDS = ("Comment", "Attributes")
+
+
+class IndentBlockSequencesDumper(yaml.SafeDumper):
+    def increase_indent(self, flow=False, indentless=False):
+        return super().increase_indent(flow, False)
+
+
+def symbol_body(function: dict) -> str:
+    """Serialize the part of a `{Dynamic,}Function` that has no dedicated
+    `Symbol` column as a YAML mapping. Empty when there is nothing to store."""
+    fields = {key: function[key] for key in TRANSFERABLE_SYMBOL_FIELDS if function.get(key)}
+    if not fields:
+        return ""
+
+    return yaml.dump(
+        fields,
+        Dumper=IndentBlockSequencesDumper,
+        default_flow_style=False,
+        allow_unicode=True,
+        sort_keys=False,
+    )
+
 
 def create_schema(connection: sqlite3.Connection) -> None:
     connection.executescript(
@@ -52,6 +75,7 @@ def create_schema(connection: sqlite3.Connection) -> None:
             Name TEXT NOT NULL,
             Kind TEXT NOT NULL,
             TypeDefinitionID INTEGER,
+            Body TEXT NOT NULL DEFAULT '',
             FOREIGN KEY (LibraryID) REFERENCES Library(LibraryID),
             FOREIGN KEY (TypeDefinitionID) REFERENCES TypeDefinition(TypeDefinitionID)
         );
@@ -187,7 +211,7 @@ def import_model(
             return None
         return original_id_to_database_id.get(int(match.group(1)))
 
-    symbol_rows: list[tuple[int, str, str, int | None]] = []
+    symbol_rows: list[tuple[int, str, str, int | None, str]] = []
 
     for function in model.get("ImportedDynamicFunctions", []):
         type_definition_database_id = resolve_prototype_id(function)
@@ -199,6 +223,7 @@ def import_model(
                 function["Name"],
                 "ImportedDynamicFunction",
                 type_definition_database_id,
+                symbol_body(function),
             )
         )
 
@@ -206,12 +231,14 @@ def import_model(
         type_definition_database_id = resolve_prototype_id(function)
         if type_definition_database_id is None:
             continue
+        body = symbol_body(function)
         for name in function.get("ExportedNames") or []:
-            symbol_rows.append((library_id, name, "Function", type_definition_database_id))
+            symbol_rows.append((library_id, name, "Function", type_definition_database_id, body))
 
     if symbol_rows:
         connection.executemany(
-            "INSERT INTO Symbol (LibraryID, Name, Kind, TypeDefinitionID) VALUES (?, ?, ?, ?)",
+            "INSERT INTO Symbol (LibraryID, Name, Kind, TypeDefinitionID, Body) "
+            "VALUES (?, ?, ?, ?, ?)",
             symbol_rows,
         )
 
