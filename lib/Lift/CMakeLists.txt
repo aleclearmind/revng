@@ -15,6 +15,7 @@ revng_add_library_internal(
   LiftPipe.cpp
   LinkSupportPipe.cpp
   JumpTargetManager.cpp
+  NoReturnAnalysis.cpp
   PostLiftVerifyPass.cpp
   RootAnalyzer.cpp
   SelfReferencingDbgAnnotationWriter.cpp
