@@ -72,9 +72,11 @@ buildCallGraph(Function &Root) {
   return Callers;
 }
 
-unsigned cutNoReturnFallthroughs(Function &Root,
-                                 const model::Binary &Binary,
-                                 BasicBlock *UnknownTarget) {
+unsigned
+cutNoReturnFallthroughs(Function &Root,
+                        const model::Binary &Binary,
+                        BasicBlock *UnknownTarget,
+                        SmallVectorImpl<BasicBlock *> &DetachedFallthroughs) {
   BlockSet Killers = collectSeeds(Root, Binary);
   if (Killers.empty()) {
     revng_log(Log, "No calls to noreturn symbols, nothing to do");
@@ -172,6 +174,7 @@ unsigned cutNoReturnFallthroughs(Function &Root,
     revng_log(Log,
               "Detaching the fallthrough of "
                 << getName(&BB) << ": " << getName(Callee) << " never returns");
+    DetachedFallthroughs.push_back(Terminator->getSuccessor(0));
     Terminator->setSuccessor(0, UnknownTarget);
     ++Cut;
   }

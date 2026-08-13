@@ -4,6 +4,8 @@
 // This file is distributed under the MIT License. See LICENSE.md for details.
 //
 
+#include "llvm/ADT/SmallVector.h"
+
 #include "revng/Model/Binary.h"
 
 namespace llvm {
@@ -31,7 +33,13 @@ class Function;
 /// \note \p Root must be in `CFGForm::NoFunctionCalls`, i.e. the terminator of
 ///       a call block must branch to the fallthrough rather than to the callee.
 ///
+/// \param DetachedFallthroughs receives the blocks that are no longer reachable
+///        by falling through a call, i.e. the ones downstream of which anything
+///        we concluded has to be reconsidered.
+///
 /// \returns the number of fallthrough edges that have been detached.
 unsigned cutNoReturnFallthroughs(llvm::Function &Root,
                                  const model::Binary &Binary,
-                                 llvm::BasicBlock *UnknownTarget);
+                                 llvm::BasicBlock *UnknownTarget,
+                                 llvm::SmallVectorImpl<llvm::BasicBlock *>
+                                   &DetachedFallthroughs);
