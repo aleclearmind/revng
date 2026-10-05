@@ -16,13 +16,7 @@
 
 namespace TypeShrinking {
 
-/// Solve value ranges with SCCP, without changing the IR. For example, a PHI
-/// cycling through XORs of zero-extended i3 values stays within [0, 8).
-/// This bound lets demanded-bit propagation retain only the source bits needed
-/// by a shift whose amount is that PHI.
-///
-/// Ranges are valid at every use; branch-local constraints are not inferred.
-/// All queries must finish before rewriting invalidates the analysis.
+/// Wrapper around SCCPSolver to easily provide ranges for a `Value`
 class ValueRanges {
 private:
   using LibraryInfo = llvm::TargetLibraryInfo;

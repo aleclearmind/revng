@@ -192,9 +192,6 @@ TypeShrinkingAnalysisPass::run(Function &F, FunctionAnalysisManager &) {
     return Ranges.range(U.get());
   });
 
-  // Only plan rewrites for blocks reachable from the entry.
-  ReversePostOrderTraversal<Function *> Blocks(&F);
-
   // Discard dead users before narrowing shared producers. Collect the whole
   // dead set, including unreachable users, so deletion leaves no dangling uses.
   TypeShrinkingAnalysisResults Result;
@@ -205,12 +202,13 @@ TypeShrinkingAnalysisPass::run(Function &F, FunctionAnalysisManager &) {
 
   // Retain a low-bit prefix covering LLVM's demanded mask. Range queries
   // finish before rebuilding invalidates either analysis.
+  ReversePostOrderTraversal<Function *> Blocks(&F);
   for (BasicBlock *Block : Blocks) {
     for (Instruction &I : *Block) {
       if (not I.getType()->isIntegerTy() or Demands.isInstructionDead(&I))
         continue;
-      unsigned Demand = Demands.getDemandedBits(&I).getActiveBits();
 
+      unsigned Demand = Demands.getDemandedBits(&I).getActiveBits();
       if (auto Plan = RewritePlan::create(I, Demand, Ranges))
         Result.Plans.emplace(&I, *Plan);
     }
